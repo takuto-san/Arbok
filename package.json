@@ -1,0 +1,35 @@
+{
+  "name": "arbok",
+  "version": "0.1.0",
+  "description": "MCP server for AST-based code analysis with Memory Bank",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "build:wasm": "npm run build:wasm:ts && npm run build:wasm:py",
+    "build:wasm:ts": "tree-sitter build --wasm node_modules/tree-sitter-typescript/typescript -o resources/tree-sitter-typescript.wasm",
+    "build:wasm:py": "tree-sitter build --wasm node_modules/tree-sitter-python -o resources/tree-sitter-python.wasm"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "web-tree-sitter": "^0.24.7",
+    "better-sqlite3": "^11.9.1",
+    "chokidar": "^4.0.3",
+    "zod": "^3.25.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "^22.15.21",
+    "@types/better-sqlite3": "^7.6.13",
+    "tsx": "^4.20.3",
+    "tree-sitter-cli": "^0.25.3",
+    "tree-sitter-typescript": "^0.23.2",
+    "tree-sitter-python": "^0.23.6"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

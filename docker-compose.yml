@@ -4,7 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: arbok-mcp-server
-    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ${PROJECT_PATH:-.}:/workspace
       - ./.cline-architect:/app/data
