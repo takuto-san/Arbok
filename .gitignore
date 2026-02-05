@@ -1,0 +1,7 @@
+.cline-architect/
+workspace/.clinerules/
+*.db
+*.db-journal
+.env
+node_modules/
+dist/
