@@ -1,7 +1,8 @@
-.cline-architect/
+.arbok/
 workspace/.clinerules/
 *.db
 *.db-journal
 .env
 node_modules/
 dist/
+resources/*.wasm

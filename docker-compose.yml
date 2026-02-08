@@ -4,17 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: arbok-mcp-server
-    user: "${UID:-1000}:${GID:-1000}"
     volumes:
-      - ${PROJECT_PATH:-.}:/workspace
-      - ./.cline-architect:/app/data
-    environment:
-      - NODE_ENV=production
-      - PROJECT_ROOT=/workspace
-      - DB_PATH=/app/data/ast.db
-      - MEMORY_BANK_DIR=/workspace/.clinerules
-      - CHOKIDAR_USEPOLLING=true
-      - CHOKIDAR_INTERVAL=1000
+      - ${PROJECT_PATH}:/workspace
+    env_file:
+      - .env
     stdin_open: true
     tty: false
     restart: unless-stopped
