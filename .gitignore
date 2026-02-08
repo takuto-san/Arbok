@@ -5,3 +5,4 @@ workspace/.clinerules/
 .env
 node_modules/
 dist/
+resources/*.wasm
