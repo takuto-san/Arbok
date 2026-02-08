@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Arbok MCP Server - Entry Point
+ * Arbok MCP Server - Alternative Entry Point (main.ts)
  * 
- * AST-based code analysis MCP server that reduces token consumption
- * by providing lightweight code structure queries.
+ * This is an alternative entry point that can be used instead of index.ts.
+ * Both entry points do the same thing: start the MCP server via stdio.
  */
 
 import 'dotenv/config';
