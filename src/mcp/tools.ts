@@ -427,7 +427,7 @@ function generateProductContext(nodes: ArbokNode[], projectPath: string): string
     try {
       const readmeContent = readFileSync(readmePath, 'utf-8');
       // Extract first few paragraphs (up to 500 chars)
-      const lines = readmeContent.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+      const lines = readmeContent.split('\n').filter(line => line.trim() && !line.startsWith('#'));
       projectDescription = lines.slice(0, 10).join('\n').substring(0, 500);
     } catch (e) {
       // Ignore read errors
@@ -758,5 +758,7 @@ function truncateToLines(content: string, maxLines: number): string {
   if (lines.length <= maxLines) {
     return content;
   }
-  return lines.slice(0, maxLines - 2).join('\n') + '\n\n*[Truncated to fit context window]*\n';
+  // Reserve 2 lines for truncation message
+  const TRUNCATION_MESSAGE_LINES = 2;
+  return lines.slice(0, maxLines - TRUNCATION_MESSAGE_LINES).join('\n') + '\n\n*[Truncated to fit context window]*\n';
 }

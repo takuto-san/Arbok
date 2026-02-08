@@ -175,7 +175,7 @@ function scheduleMemoryBankUpdate(): void {
 /**
  * Execute Memory Bank update and reset counters
  */
-function executeMemoryBankUpdate(): void {
+async function executeMemoryBankUpdate(): Promise<void> {
   if (pendingChanges === 0) return;
 
   console.error(`Triggering Memory Bank update (${pendingChanges} changes accumulated)`);
