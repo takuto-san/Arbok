@@ -11,8 +11,13 @@ import {
   insertNodes, 
   insertEdges 
 } from '../database/queries.js';
+import { arbokUpdateMemory } from '../mcp/tools.js';
 
 let watcher: FSWatcher | null = null;
+let pendingChanges = 0;
+let memoryBankUpdateTimer: NodeJS.Timeout | null = null;
+const MEMORY_BANK_UPDATE_THRESHOLD = 5;
+const MEMORY_BANK_UPDATE_DEBOUNCE_MS = 30000; // 30 seconds
 
 /**
  * Start watching the project directory for changes
@@ -52,6 +57,12 @@ export async function stopWatcher(): Promise<void> {
     await watcher.close();
     watcher = null;
     console.error('File watcher stopped');
+  }
+  
+  // Clear any pending memory bank update timer
+  if (memoryBankUpdateTimer) {
+    clearTimeout(memoryBankUpdateTimer);
+    memoryBankUpdateTimer = null;
   }
 }
 
@@ -99,6 +110,9 @@ async function handleFileChange(filePath: string, event: 'added' | 'changed'): P
       
       console.error(`Updated ${nodes.length} nodes and ${edges.length} edges for: ${relativePath}`);
     }
+
+    // Track change and schedule memory bank update
+    scheduleMemoryBankUpdate();
   } catch (error) {
     console.error(`Error processing file ${filePath}:`, error);
   }
@@ -126,7 +140,57 @@ function handleFileDelete(filePath: string): void {
     deleteNodesByFile(relativePath);
 
     console.error(`Removed nodes and edges for: ${relativePath}`);
+
+    // Track change and schedule memory bank update
+    scheduleMemoryBankUpdate();
   } catch (error) {
     console.error(`Error deleting file data ${filePath}:`, error);
+  }
+}
+
+/**
+ * Schedule a debounced Memory Bank update
+ */
+function scheduleMemoryBankUpdate(): void {
+  pendingChanges++;
+
+  // Clear existing timer
+  if (memoryBankUpdateTimer) {
+    clearTimeout(memoryBankUpdateTimer);
+  }
+
+  // Check if we've reached the threshold
+  if (pendingChanges >= MEMORY_BANK_UPDATE_THRESHOLD) {
+    executeMemoryBankUpdate();
+  } else {
+    // Set a new debounce timer
+    memoryBankUpdateTimer = setTimeout(() => {
+      if (pendingChanges > 0) {
+        executeMemoryBankUpdate();
+      }
+    }, MEMORY_BANK_UPDATE_DEBOUNCE_MS);
+  }
+}
+
+/**
+ * Execute Memory Bank update and reset counters
+ */
+function executeMemoryBankUpdate(): void {
+  if (pendingChanges === 0) return;
+
+  console.error(`Triggering Memory Bank update (${pendingChanges} changes accumulated)`);
+  
+  try {
+    arbokUpdateMemory({ memoryBankPath: config.memoryBankPath });
+    console.error('Memory Bank updated successfully');
+  } catch (error) {
+    console.error('Error updating Memory Bank:', error);
+  }
+
+  // Reset
+  pendingChanges = 0;
+  if (memoryBankUpdateTimer) {
+    clearTimeout(memoryBankUpdateTimer);
+    memoryBankUpdateTimer = null;
   }
 }

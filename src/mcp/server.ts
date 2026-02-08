@@ -11,11 +11,13 @@ import {
   arbokSearchSymbol,
   arbokGetDependencies,
   arbokUpdateMemory,
+  arbokSetupRules,
   ArbokInitSchema,
   ArbokGetFileStructureSchema,
   ArbokSearchSymbolSchema,
   ArbokGetDependenciesSchema,
   ArbokUpdateMemorySchema,
+  ArbokSetupRulesSchema,
 } from './tools.js';
 
 /**
@@ -117,6 +119,19 @@ export async function createMCPServer(): Promise<Server> {
             },
           },
         },
+        {
+          name: 'arbok_setup_rules',
+          description: 'Auto-generate .clinerules configuration files for Cline integration. Creates base rules for efficient file access via Arbok, and workflows for Memory Bank updates and project initialization.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+              },
+            },
+          },
+        },
       ],
     };
   });
@@ -156,6 +171,12 @@ export async function createMCPServer(): Promise<Server> {
         case 'arbok_update_memory': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
           result = arbokUpdateMemory(validatedArgs);
+          break;
+        }
+
+        case 'arbok_setup_rules': {
+          const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
+          result = arbokSetupRules(validatedArgs);
           break;
         }
 
