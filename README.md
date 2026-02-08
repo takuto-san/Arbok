@@ -2,13 +2,33 @@
 
 AST-based code analysis MCP server that reduces token consumption by providing lightweight code structure queries instead of reading entire files.
 
+## Why Arbok?
+
+Cline is powerful but expensive — it reads entire source files to understand your codebase, consuming thousands of tokens per exploration. Arbok solves this by:
+
+1. **AST Index**: Instead of reading 500-line files, Cline gets a 20-line summary of functions/classes/signatures
+2. **Memory Bank**: Project context is pre-generated so Cline doesn't need to re-explore on every task  
+3. **Auto-setup**: .clinerules are generated automatically to teach Cline to use Arbok
+4. **Real-time sync**: File watcher keeps everything up-to-date as you code
+
 ## Features
 
 - **AST Parsing**: Uses tree-sitter to parse TypeScript, JavaScript, and Python files
 - **Symbol Indexing**: Extracts and indexes functions, classes, interfaces, methods, and more
 - **Dependency Tracking**: Resolves imports, extends, and implements relationships
 - **Real-time Updates**: File system watcher keeps the index up-to-date
-- **Memory Bank**: Generates documentation files summarizing project structure
+- **Memory Bank**: Generates Cline-compliant documentation files summarizing project structure
+- **Cline Integration**: Auto-generates .clinerules for optimal workflow
+
+## Quick Start with Cline
+
+1. Add Arbok as an MCP server in Cline settings
+2. In Cline chat, say: "init arbok"  
+3. Arbok will:
+   - Scan your project and create an AST index (.arbok/index.db)
+   - Generate Memory Bank files (memory-bank/)
+   - Create .clinerules for optimal Cline integration
+4. Start coding with dramatically reduced token consumption!
 
 ## Installation
 
@@ -91,6 +111,29 @@ Generate Memory Bank files with project structure and documentation.
   "memoryBankPath": "memory-bank"  // optional
 }
 ```
+
+Generates 6 Cline-compliant Memory Bank files:
+- `productContext.md` — Project purpose and user experience goals
+- `activeContext.md` — Current work focus and recent changes
+- `progress.md` — What works, what's left, known issues
+- `systemPatterns.md` — Architecture and design patterns
+- `techContext.md` — Technologies, dependencies, and setup
+- `project-structure.md` — File tree and symbol index
+
+### 6. `arbok_setup_rules`
+
+Auto-generate .clinerules configuration files for Cline integration.
+
+```json
+{
+  "projectPath": "/workspace"  // optional
+}
+```
+
+Creates:
+- `.clinerules/rules.md` — Base rules for efficient file access
+- `.clinerules/workflows/update_memory.md` — Memory Bank update workflow
+- `.clinerules/workflows/init_arbok.md` — Initialization workflow
 
 ## Configuration
 
