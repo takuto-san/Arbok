@@ -73,7 +73,7 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
 
   let totalNodes = 0;
   let totalEdges = 0;
-  const allFileNodes: { filePath: string; nodes: Omit<any, 'updated_at'>[] }[] = [];
+  const allFileNodes: { filePath: string; nodes: Omit<ArbokNode, 'updated_at'>[] }[] = [];
 
   // First pass: extract all nodes
   for (const filePath of files) {
@@ -208,7 +208,21 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
     sourceNodes = getNodesByFile(filePath);
   }
 
-  const dependencies: any[] = [];
+  interface DependencyEntry {
+    source: {
+      file_path: string;
+      name: string;
+      kind: NodeKind;
+    };
+    relation: string;
+    target: {
+      file_path: string;
+      name: string;
+      kind: NodeKind;
+    };
+  }
+  
+  const dependencies: DependencyEntry[] = [];
 
   for (const sourceNode of sourceNodes) {
     const edges = getEdgesBySource(sourceNode.id);
@@ -287,8 +301,8 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
 /**
  * Generate project structure markdown
  */
-function generateProjectStructure(nodes: any[]): string {
-  const fileMap = new Map<string, any[]>();
+function generateProjectStructure(nodes: ArbokNode[]): string {
+  const fileMap = new Map<string, ArbokNode[]>();
   
   for (const node of nodes) {
     if (!fileMap.has(node.file_path)) {
@@ -343,7 +357,7 @@ function generateProjectStructure(nodes: any[]): string {
 /**
  * Generate components markdown
  */
-function generateComponents(nodes: any[]): string {
+function generateComponents(nodes: ArbokNode[]): string {
   let md = '# Major Components\n\n';
   md += `Generated: ${new Date().toISOString()}\n\n`;
 
@@ -367,7 +381,7 @@ function generateComponents(nodes: any[]): string {
 /**
  * Generate dependencies markdown
  */
-function generateDependencies(nodes: any[]): string {
+function generateDependencies(nodes: ArbokNode[]): string {
   let md = '# Dependency Graph\n\n';
   md += `Generated: ${new Date().toISOString()}\n\n`;
 
