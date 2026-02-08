@@ -51,6 +51,10 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
   
   console.error(`Initializing Arbok for project: ${projectPath}`);
 
+  // Ensure parsers are initialized
+  const { initParsers } = await import('../core/parser.js');
+  await initParsers();
+
   // Clear existing data
   clearDatabase();
 
