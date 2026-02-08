@@ -1,4 +1,4 @@
-import chokidar from 'chokidar';
+import chokidar, { FSWatcher } from 'chokidar';
 import path from 'path';
 import { readFileSync } from 'fs';
 import { config } from '../config.js';
@@ -12,7 +12,7 @@ import {
   insertEdges 
 } from '../database/queries.js';
 
-let watcher: chokidar.FSWatcher | null = null;
+let watcher: FSWatcher | null = null;
 
 /**
  * Start watching the project directory for changes
@@ -36,10 +36,10 @@ export function startWatcher(projectPath: string = config.projectPath): void {
   });
 
   watcher
-    .on('add', (filePath) => handleFileChange(filePath, 'added'))
-    .on('change', (filePath) => handleFileChange(filePath, 'changed'))
-    .on('unlink', (filePath) => handleFileDelete(filePath))
-    .on('error', (error) => console.error('Watcher error:', error));
+    .on('add', (filePath: string) => handleFileChange(filePath, 'added'))
+    .on('change', (filePath: string) => handleFileChange(filePath, 'changed'))
+    .on('unlink', (filePath: string) => handleFileDelete(filePath))
+    .on('error', (error: unknown) => console.error('Watcher error:', error));
 
   console.error('File watcher started successfully');
 }

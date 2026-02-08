@@ -18,7 +18,7 @@ import {
   clearDatabase,
 } from '../database/queries.js';
 import { startWatcher } from '../observer/watcher.js';
-import type { NodeKind } from '../types/index.js';
+import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
@@ -197,7 +197,7 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
     }, null, 2);
   }
 
-  let sourceNodes = [];
+  let sourceNodes: ArbokNode[] = [];
 
   if (symbolName) {
     // Find nodes by name
