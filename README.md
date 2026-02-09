@@ -60,7 +60,7 @@ docker-compose up
 
 ## MCP Tools
 
-### 1. `arbok_init`
+### 1. `arbok_update_index`
 
 Initialize or re-index the project.
 
@@ -80,9 +80,9 @@ Get the structure of a specific file (symbols without source code).
 }
 ```
 
-### 3. `arbok_search_symbol`
+### 3. `arbok_get_symbols`
 
-Search for symbols by name across the entire project.
+List symbols matching a name across the entire project.
 
 ```json
 {
@@ -102,9 +102,9 @@ Get dependency relationships for a file or symbol.
 }
 ```
 
-### 5. `arbok_update_memory`
+### 5. `arbok_update_memory_bank`
 
-Generate Memory Bank files with project structure and documentation.
+Update Memory Bank files with project structure and documentation. Creates the memory-bank directory if missing, or updates existing files.
 
 ```json
 {
@@ -120,9 +120,9 @@ Generates 6 Cline-compliant Memory Bank files:
 - `techContext.md` — Technologies, dependencies, and setup
 - `project-structure.md` — File tree and symbol index
 
-### 6. `arbok_setup_rules`
+### 6. `arbok_update_rules`
 
-Auto-generate .clinerules configuration files for Cline integration.
+Update .clinerules configuration files for Cline integration. Creates config files if missing, or updates existing ones.
 
 ```json
 {
