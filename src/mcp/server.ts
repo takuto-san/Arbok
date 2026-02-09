@@ -7,11 +7,14 @@ import {
 import { initParsers } from '../core/parser.js';
 import {
   arbokInit,
+  arbokInitIndex,
   arbokGetFileStructure,
   arbokSearchSymbol,
   arbokGetDependencies,
   arbokUpdateMemory,
+  arbokInitMemoryBank,
   arbokSetupRules,
+  arbokInitRules,
   ArbokInitSchema,
   ArbokGetFileStructureSchema,
   ArbokSearchSymbolSchema,
@@ -132,6 +135,45 @@ export async function createMCPServer(): Promise<Server> {
             },
           },
         },
+        {
+          name: 'arbok_init_index',
+          description: 'Initialize the project index only if it does not already exist. If the index already exists, this tool does nothing and returns a message. Use arbok_update_index to re-index.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+              },
+            },
+          },
+        },
+        {
+          name: 'arbok_init_memory_bank',
+          description: 'Initialize Memory Bank files only if the memory-bank directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok_update_memory_bank to update.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              memoryBankPath: {
+                type: 'string',
+                description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
+              },
+            },
+          },
+        },
+        {
+          name: 'arbok_init_rules',
+          description: 'Initialize .clinerules configuration files only if the .clinerules directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok_update_rules to update.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+              },
+            },
+          },
+        },
       ],
     };
   });
@@ -177,6 +219,24 @@ export async function createMCPServer(): Promise<Server> {
         case 'arbok_update_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
           result = arbokSetupRules(validatedArgs);
+          break;
+        }
+
+        case 'arbok_init_index': {
+          const validatedArgs = ArbokInitSchema.parse(args || {});
+          result = await arbokInitIndex(validatedArgs);
+          break;
+        }
+
+        case 'arbok_init_memory_bank': {
+          const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
+          result = arbokInitMemoryBank(validatedArgs);
+          break;
+        }
+
+        case 'arbok_init_rules': {
+          const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
+          result = arbokInitRules(validatedArgs);
           break;
         }
 
