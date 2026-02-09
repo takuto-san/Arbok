@@ -74,7 +74,7 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_list_symbols',
+          name: 'arbok_get_symbols',
           description: 'List symbols matching a name across the entire project. Supports partial matching.',
           inputSchema: {
             type: 'object',
@@ -198,7 +198,7 @@ export async function createMCPServer(): Promise<Server> {
           break;
         }
 
-        case 'arbok_list_symbols': {
+        case 'arbok_get_symbols': {
           const validatedArgs = ArbokSearchSymbolSchema.parse(args || {});
           result = arbokSearchSymbol(validatedArgs);
           break;

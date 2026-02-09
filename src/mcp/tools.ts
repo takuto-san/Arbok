@@ -17,7 +17,7 @@ import {
   getCounts,
   clearDatabase,
 } from '../database/queries.js';
-import { startWatcher } from '../observer/watcher.js';
+import { startWatcher } from '../watcher/watcher.js';
 import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 
 // Input schemas for MCP tools
@@ -90,7 +90,7 @@ When you need to understand a file's structure, ALWAYS use the \`arbok_get_file_
 Only read the full file content when you need to modify specific lines or understand detailed implementation logic.
 
 ## Symbol Search Rules  
-When looking for a function, class, or variable definition, use \`arbok_list_symbols\` instead of scanning multiple files.
+When looking for a function, class, or variable definition, use \`arbok_get_symbols\` instead of scanning multiple files.
 
 ## Dependency Analysis Rules
 When you need to understand how components are connected, use \`arbok_get_dependencies\` to get the dependency graph.

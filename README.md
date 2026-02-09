@@ -80,7 +80,7 @@ Get the structure of a specific file (symbols without source code).
 }
 ```
 
-### 3. `arbok_list_symbols`
+### 3. `arbok_get_symbols`
 
 List symbols matching a name across the entire project.
 
