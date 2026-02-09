@@ -33,11 +33,11 @@ All requirements from the problem statement have been fully implemented and test
 - ✅ Proper ignore patterns for node_modules, .git, etc.
 
 ### 5. MCP Tools
-- ✅ `arbok_init` - Initialize and index project
+- ✅ `arbok_update_index` - Initialize and index project
 - ✅ `arbok_get_file_structure` - Get file symbols without source code
-- ✅ `arbok_search_symbol` - Search symbols across project
+- ✅ `arbok_list_symbols` - List symbols across project
 - ✅ `arbok_get_dependencies` - Get dependency relationships
-- ✅ `arbok_update_memory` - Generate Memory Bank files
+- ✅ `arbok_update_memory_bank` - Generate Memory Bank files
 
 ### 6. Quality Assurance
 - ✅ TypeScript strict mode with zero 'any' types

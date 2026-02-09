@@ -44,8 +44,8 @@ export async function createMCPServer(): Promise<Server> {
     return {
       tools: [
         {
-          name: 'arbok_init',
-          description: 'Initialize/re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges, and starts file watcher.',
+          name: 'arbok_update_index',
+          description: 'Initialize or re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges, and starts file watcher. If the index already exists, it is refreshed.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -71,8 +71,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_search_symbol',
-          description: 'Search for symbols by name across the entire project. Supports partial matching.',
+          name: 'arbok_list_symbols',
+          description: 'List symbols matching a name across the entire project. Supports partial matching.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -107,8 +107,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_update_memory',
-          description: 'Update Memory Bank files with current project structure, components, and dependencies.',
+          name: 'arbok_update_memory_bank',
+          description: 'Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -120,8 +120,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_setup_rules',
-          description: 'Auto-generate .clinerules configuration files for Cline integration. Creates base rules for efficient file access via Arbok, and workflows for Memory Bank updates and project initialization.',
+          name: 'arbok_update_rules',
+          description: 'Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -144,7 +144,7 @@ export async function createMCPServer(): Promise<Server> {
       let result: string;
 
       switch (name) {
-        case 'arbok_init': {
+        case 'arbok_update_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
           result = await arbokInit(validatedArgs);
           break;
@@ -156,7 +156,7 @@ export async function createMCPServer(): Promise<Server> {
           break;
         }
 
-        case 'arbok_search_symbol': {
+        case 'arbok_list_symbols': {
           const validatedArgs = ArbokSearchSymbolSchema.parse(args || {});
           result = arbokSearchSymbol(validatedArgs);
           break;
@@ -168,13 +168,13 @@ export async function createMCPServer(): Promise<Server> {
           break;
         }
 
-        case 'arbok_update_memory': {
+        case 'arbok_update_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
           result = arbokUpdateMemory(validatedArgs);
           break;
         }
 
-        case 'arbok_setup_rules': {
+        case 'arbok_update_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
           result = arbokSetupRules(validatedArgs);
           break;
