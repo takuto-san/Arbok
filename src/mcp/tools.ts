@@ -407,7 +407,7 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
  * Initialize Memory Bank files only if they do not exist.
  * If the memory-bank directory already exists, skip creation and return a message.
  */
-export function arbokInitMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
+export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
   const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
 
   if (existsSync(memoryBankPath)) {

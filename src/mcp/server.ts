@@ -12,7 +12,7 @@ import {
   arbokSearchSymbol,
   arbokGetDependencies,
   arbokUpdateMemory,
-  arbokInitMemory,
+  arbokInitMemoryBank,
   arbokSetupRules,
   arbokInitRules,
   ArbokInitSchema,
@@ -230,7 +230,7 @@ export async function createMCPServer(): Promise<Server> {
 
         case 'arbok_init_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
-          result = arbokInitMemory(validatedArgs);
+          result = arbokInitMemoryBank(validatedArgs);
           break;
         }
 
