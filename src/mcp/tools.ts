@@ -48,14 +48,18 @@ export const ArbokSetupRulesSchema = z.object({
 });
 
 /**
- * Auto-generate .clinerules configuration files
+ * Update .clinerules configuration files.
+ * If .clinerules or related config files do not exist, they are generated from scratch (Setup phase).
+ * If they already exist, they are updated with necessary changes (Update phase).
  */
 export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
   const projectPath = args.projectPath || config.projectPath;
   
-  // Create .clinerules directory structure
   const clineruleDir = path.join(projectPath, '.clinerules');
   const workflowsDir = path.join(clineruleDir, 'workflows');
+  const isUpdate = existsSync(clineruleDir);
+
+  // Create .clinerules directory structure if missing
   mkdirSync(clineruleDir, { recursive: true });
   mkdirSync(workflowsDir, { recursive: true });
 
@@ -67,7 +71,7 @@ When you need to understand a file's structure, ALWAYS use the \`arbok_get_file_
 Only read the full file content when you need to modify specific lines or understand detailed implementation logic.
 
 ## Symbol Search Rules  
-When looking for a function, class, or variable definition, use \`arbok_search_symbol\` instead of scanning multiple files.
+When looking for a function, class, or variable definition, use \`arbok_list_symbols\` instead of scanning multiple files.
 
 ## Dependency Analysis Rules
 When you need to understand how components are connected, use \`arbok_get_dependencies\` to get the dependency graph.
@@ -87,7 +91,7 @@ When you need to understand how components are connected, use \`arbok_get_depend
 Run this workflow after completing any task that modifies the codebase.
 
 ## Steps
-1. Call \`arbok_update_memory\` tool to regenerate Memory Bank files
+1. Call \`arbok_update_memory_bank\` tool to regenerate Memory Bank files
 2. Review the generated files in \`memory-bank/\` directory
 3. The following files will be updated:
    - \`memory-bank/productContext.md\` — Project purpose and user experience goals
@@ -106,8 +110,8 @@ Run this workflow after completing any task that modifies the codebase.
 Run this workflow when starting work on this project for the first time or after major structural changes.
 
 ## Steps
-1. Call \`arbok_init\` tool to scan and index the entire project
-2. Call \`arbok_update_memory\` to generate Memory Bank documentation
+1. Call \`arbok_update_index\` tool to scan and index the entire project
+2. Call \`arbok_update_memory_bank\` to generate Memory Bank documentation
 3. Read \`memory-bank/productContext.md\` to understand the project
 4. Read \`memory-bank/activeContext.md\` for current work context
 `;
@@ -115,7 +119,9 @@ Run this workflow when starting work on this project for the first time or after
 
   return JSON.stringify({
     success: true,
-    message: '.clinerules files created successfully',
+    message: isUpdate
+      ? '.clinerules files updated successfully'
+      : '.clinerules files created successfully',
     files_created: [
       path.join(clineruleDir, 'rules.md'),
       path.join(workflowsDir, 'update_memory.md'),
@@ -352,10 +358,13 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
 }
 
 /**
- * Update Memory Bank files
+ * Update Memory Bank files.
+ * If the memory-bank directory and basic files do not exist, they are created and initialized (Setup phase).
+ * If they already exist, they are updated with the current project state (Update phase).
  */
 export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
   const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+  const isUpdate = existsSync(memoryBankPath);
   
   // Ensure memory bank directory exists
   mkdirSync(memoryBankPath, { recursive: true });
@@ -404,7 +413,9 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
 
   return JSON.stringify({
     success: true,
-    message: 'Memory Bank updated successfully',
+    message: isUpdate
+      ? 'Memory Bank updated successfully'
+      : 'Memory Bank initialized successfully',
     files: filesCreated,
     stats: {
       files: stats.files,
