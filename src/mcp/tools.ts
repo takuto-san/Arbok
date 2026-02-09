@@ -48,6 +48,25 @@ export const ArbokSetupRulesSchema = z.object({
 });
 
 /**
+ * Initialize .clinerules configuration files only if they do not exist.
+ * If .clinerules already exists, skip creation and return a message.
+ */
+export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
+  const projectPath = args.projectPath || config.projectPath;
+  const clineruleDir = path.join(projectPath, '.clinerules');
+
+  if (existsSync(clineruleDir)) {
+    return JSON.stringify({
+      success: true,
+      message: '.clinerules already exists. Use arbok_update_rules to update.',
+      skipped: true,
+    }, null, 2);
+  }
+
+  return arbokSetupRules({ projectPath });
+}
+
+/**
  * Update .clinerules configuration files.
  * If .clinerules or related config files do not exist, they are generated from scratch (Setup phase).
  * If they already exist, they are updated with necessary changes (Update phase).
@@ -128,6 +147,33 @@ Run this workflow when starting work on this project for the first time or after
       path.join(workflowsDir, 'init_arbok.md'),
     ],
   }, null, 2);
+}
+
+/**
+ * Initialize/index the project only if the index does not exist.
+ * If the index already exists, skip creation and return a message.
+ */
+export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
+  const projectPath = args.projectPath || config.projectPath;
+  const dbPath = path.join(projectPath, '.arbok', 'index.db');
+
+  if (existsSync(dbPath)) {
+    const stats = getCounts();
+    if (stats.nodes > 0) {
+      return JSON.stringify({
+        success: true,
+        message: 'Index already exists. Use arbok_update_index to re-index.',
+        skipped: true,
+        stats: {
+          files_indexed: stats.files,
+          nodes_created: stats.nodes,
+          edges_created: stats.edges,
+        },
+      }, null, 2);
+    }
+  }
+
+  return arbokInit(args);
 }
 
 /**
@@ -355,6 +401,24 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
     symbol_name: symbolName,
     dependencies,
   }, null, 2);
+}
+
+/**
+ * Initialize Memory Bank files only if they do not exist.
+ * If the memory-bank directory already exists, skip creation and return a message.
+ */
+export function arbokInitMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
+  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+
+  if (existsSync(memoryBankPath)) {
+    return JSON.stringify({
+      success: true,
+      message: 'Memory Bank already exists. Use arbok_update_memory_bank to update.',
+      skipped: true,
+    }, null, 2);
+  }
+
+  return arbokUpdateMemory({ memoryBankPath });
 }
 
 /**
