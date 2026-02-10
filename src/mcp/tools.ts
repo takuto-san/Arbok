@@ -20,6 +20,24 @@ import {
 import { startWatcher } from '../watcher/watcher.js';
 import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 
+/** Glob patterns for source files to scan recursively. */
+const SOURCE_FILE_PATTERNS: string[] = [
+  '**/*.ts',
+  '**/*.tsx',
+  '**/*.js',
+  '**/*.jsx',
+  '**/*.py',
+  '**/*.go',
+  '**/*.rs',
+];
+
+/** Directories to strictly ignore during file scanning. */
+const SCAN_IGNORE_PATTERNS: string[] = [
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/dist/**',
+];
+
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
   projectPath: z.string().optional(),
@@ -177,6 +195,40 @@ export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Pro
 }
 
 /**
+ * Recursively scan a project directory for source files using fast-glob.
+ *
+ * Finds all files ending in .py, .ts, .js, .go, and .rs while strictly
+ * ignoring node_modules, .git, and dist directories.
+ *
+ * @param projectPath - The root directory to scan.
+ * @returns An array of absolute file paths.
+ */
+export async function scanSourceFiles(projectPath: string): Promise<string[]> {
+  const ignorePatterns: string[] = [
+    ...SCAN_IGNORE_PATTERNS,
+    ...config.watchIgnorePatterns,
+  ];
+
+  // Deduplicate ignore patterns
+  const uniqueIgnore: string[] = [...new Set(ignorePatterns)];
+
+  try {
+    const files: string[] = await fg(SOURCE_FILE_PATTERNS, {
+      cwd: projectPath,
+      ignore: uniqueIgnore,
+      absolute: true,
+      followSymbolicLinks: false,
+    });
+
+    return files;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error scanning source files in ${projectPath}: ${message}`);
+    return [];
+  }
+}
+
+/**
  * Initialize/re-index the project
  */
 export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
@@ -192,19 +244,7 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
   clearDatabase();
 
   // Find all source files
-  const patterns = [
-    '**/*.ts',
-    '**/*.tsx',
-    '**/*.js',
-    '**/*.jsx',
-    '**/*.py',
-  ];
-
-  const files = await fg(patterns, {
-    cwd: projectPath,
-    ignore: config.watchIgnorePatterns,
-    absolute: true,
-  });
+  const files = await scanSourceFiles(projectPath);
 
   console.error(`Found ${files.length} files to index`);
 
