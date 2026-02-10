@@ -48,8 +48,8 @@ export async function createMCPServer(): Promise<Server> {
       tools: [
         // init tools
         {
-          name: 'arbok_init_index',
-          description: 'Initialize the project index only if it does not already exist. If the index already exists, this tool does nothing and returns a message. Use arbok_update_index to re-index.',
+          name: 'arbok:init_index',
+          description: 'Initialize the project index only if it does not already exist. If the index already exists, this tool does nothing and returns a message. Use arbok:update_index to re-index.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -61,8 +61,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_init_memory_bank',
-          description: 'Initialize Memory Bank files only if the memory-bank directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok_update_memory_bank to update.',
+          name: 'arbok:init_memory_bank',
+          description: 'Initialize Memory Bank files only if the memory-bank directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok:update_memory_bank to update.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -74,8 +74,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_init_rules',
-          description: 'Initialize .clinerules configuration files only if the .clinerules directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok_update_rules to update.',
+          name: 'arbok:init_rules',
+          description: 'Initialize .clinerules configuration files only if the .clinerules directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok:update_rules to update.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -88,7 +88,7 @@ export async function createMCPServer(): Promise<Server> {
         },
         // get tools
         {
-          name: 'arbok_get_file_structure',
+          name: 'arbok:get_file_structure',
           description: 'Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code.',
           inputSchema: {
             type: 'object',
@@ -102,7 +102,7 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_get_symbols',
+          name: 'arbok:get_symbols',
           description: 'List symbols matching a name across the entire project. Supports partial matching.',
           inputSchema: {
             type: 'object',
@@ -121,7 +121,7 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_get_dependencies',
+          name: 'arbok:get_dependencies',
           description: 'Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships.',
           inputSchema: {
             type: 'object',
@@ -139,7 +139,7 @@ export async function createMCPServer(): Promise<Server> {
         },
         // update tools
         {
-          name: 'arbok_update_index',
+          name: 'arbok:update_index',
           description: 'Initialize or re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges, and starts file watcher. If the index already exists, it is refreshed.',
           inputSchema: {
             type: 'object',
@@ -152,7 +152,7 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_update_memory_bank',
+          name: 'arbok:update_memory_bank',
           description: 'Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.',
           inputSchema: {
             type: 'object',
@@ -165,7 +165,7 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_update_rules',
+          name: 'arbok:update_rules',
           description: 'Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.',
           inputSchema: {
             type: 'object',
@@ -190,57 +190,57 @@ export async function createMCPServer(): Promise<Server> {
 
       switch (name) {
         // init tools
-        case 'arbok_init_index': {
+        case 'arbok:init_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
           result = await arbokInitIndex(validatedArgs);
           break;
         }
 
-        case 'arbok_init_memory_bank': {
+        case 'arbok:init_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
           result = arbokInitMemoryBank(validatedArgs);
           break;
         }
 
-        case 'arbok_init_rules': {
+        case 'arbok:init_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
           result = arbokInitRules(validatedArgs);
           break;
         }
 
         // get tools
-        case 'arbok_get_file_structure': {
+        case 'arbok:get_file_structure': {
           const validatedArgs = ArbokGetFileStructureSchema.parse(args || {});
           result = arbokGetFileStructure(validatedArgs);
           break;
         }
 
-        case 'arbok_get_symbols': {
+        case 'arbok:get_symbols': {
           const validatedArgs = ArbokSearchSymbolSchema.parse(args || {});
           result = arbokSearchSymbol(validatedArgs);
           break;
         }
 
-        case 'arbok_get_dependencies': {
+        case 'arbok:get_dependencies': {
           const validatedArgs = ArbokGetDependenciesSchema.parse(args || {});
           result = arbokGetDependencies(validatedArgs);
           break;
         }
 
         // update tools
-        case 'arbok_update_index': {
+        case 'arbok:update_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
           result = await arbokInit(validatedArgs);
           break;
         }
 
-        case 'arbok_update_memory_bank': {
+        case 'arbok:update_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
           result = arbokUpdateMemory(validatedArgs);
           break;
         }
 
-        case 'arbok_update_rules': {
+        case 'arbok:update_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
           result = arbokSetupRules(validatedArgs);
           break;

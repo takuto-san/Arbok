@@ -58,7 +58,7 @@ export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): str
   if (existsSync(clineruleDir)) {
     return JSON.stringify({
       success: true,
-      message: '.clinerules already exists. Use arbok_update_rules to update.',
+      message: '.clinerules already exists. Use arbok:update_rules to update.',
       skipped: true,
     }, null, 2);
   }
@@ -86,14 +86,14 @@ export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): st
   const baseRules = `# Arbok Integration Rules
 
 ## File Access Rules
-When you need to understand a file's structure, ALWAYS use the \`arbok_get_file_structure\` tool first before reading the entire file.
+When you need to understand a file's structure, ALWAYS use the \`arbok:get_file_structure\` tool first before reading the entire file.
 Only read the full file content when you need to modify specific lines or understand detailed implementation logic.
 
 ## Symbol Search Rules  
-When looking for a function, class, or variable definition, use \`arbok_get_symbols\` instead of scanning multiple files.
+When looking for a function, class, or variable definition, use \`arbok:get_symbols\` instead of scanning multiple files.
 
 ## Dependency Analysis Rules
-When you need to understand how components are connected, use \`arbok_get_dependencies\` to get the dependency graph.
+When you need to understand how components are connected, use \`arbok:get_dependencies\` to get the dependency graph.
 
 ## General Guidelines
 - Minimize the number of files you read in full
@@ -110,7 +110,7 @@ When you need to understand how components are connected, use \`arbok_get_depend
 Run this workflow after completing any task that modifies the codebase.
 
 ## Steps
-1. Call \`arbok_update_memory_bank\` tool to regenerate Memory Bank files
+1. Call \`arbok:update_memory_bank\` tool to regenerate Memory Bank files
 2. Review the generated files in \`memory-bank/\` directory
 3. The following files will be updated:
    - \`memory-bank/productContext.md\` — Project purpose and user experience goals
@@ -129,8 +129,8 @@ Run this workflow after completing any task that modifies the codebase.
 Run this workflow when starting work on this project for the first time or after major structural changes.
 
 ## Steps
-1. Call \`arbok_update_index\` tool to scan and index the entire project
-2. Call \`arbok_update_memory_bank\` to generate Memory Bank documentation
+1. Call \`arbok:update_index\` tool to scan and index the entire project
+2. Call \`arbok:update_memory_bank\` to generate Memory Bank documentation
 3. Read \`memory-bank/productContext.md\` to understand the project
 4. Read \`memory-bank/activeContext.md\` for current work context
 `;
@@ -162,7 +162,7 @@ export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Pro
     if (stats.nodes > 0) {
       return JSON.stringify({
         success: true,
-        message: 'Index already exists. Use arbok_update_index to re-index.',
+        message: 'Index already exists. Use arbok:update_index to re-index.',
         skipped: true,
         stats: {
           files_indexed: stats.files,
@@ -413,7 +413,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
   if (existsSync(memoryBankPath)) {
     return JSON.stringify({
       success: true,
-      message: 'Memory Bank already exists. Use arbok_update_memory_bank to update.',
+      message: 'Memory Bank already exists. Use arbok:update_memory_bank to update.',
       skipped: true,
     }, null, 2);
   }
