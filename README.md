@@ -60,9 +60,11 @@ docker-compose up
 
 ## MCP Tools
 
-### 1. `arbok_update_index`
+### Init Tools（初回セットアップ用）
 
-Initialize or re-index the project.
+#### `arbok:init_index`
+
+Initialize the project index only if it does not already exist. If the index already exists, this tool does nothing and returns a message.
 
 ```json
 {
@@ -70,30 +72,52 @@ Initialize or re-index the project.
 }
 ```
 
-### 2. `arbok_get_file_structure`
+#### `arbok:init_memory_bank`
 
-Get the structure of a specific file (symbols without source code).
-
-```json
-{
-  "filePath": "src/index.ts"
-}
-```
-
-### 3. `arbok_get_symbols`
-
-List symbols matching a name across the entire project.
+Initialize Memory Bank files only if the memory-bank directory does not already exist. If it already exists, this tool does nothing and returns a message.
 
 ```json
 {
-  "query": "hello",
-  "kind": "function"  // optional: function, class, interface, etc.
+  "memoryBankPath": "memory-bank"  // optional
 }
 ```
 
-### 4. `arbok_get_dependencies`
+#### `arbok:init_rules`
 
-Get dependency relationships for a file or symbol.
+Initialize .clinerules configuration files only if the .clinerules directory does not already exist. If it already exists, this tool does nothing and returns a message.
+
+```json
+{
+  "projectPath": "/workspace"  // optional
+}
+```
+
+### Get Tools（情報取得用）
+
+#### `arbok:get_file_structure`
+
+Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code.
+
+```json
+{
+  "filePath": "src/index.ts"  // required
+}
+```
+
+#### `arbok:get_symbols`
+
+List symbols matching a name across the entire project. Supports partial matching.
+
+```json
+{
+  "query": "hello",           // required
+  "kind": "function"          // optional: function, class, variable, interface, method, type_alias, enum
+}
+```
+
+#### `arbok:get_dependencies`
+
+Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships.
 
 ```json
 {
@@ -102,9 +126,21 @@ Get dependency relationships for a file or symbol.
 }
 ```
 
-### 5. `arbok_update_memory_bank`
+### Update Tools（更新用）
 
-Update Memory Bank files with project structure and documentation. Creates the memory-bank directory if missing, or updates existing files.
+#### `arbok:update_index`
+
+Initialize or re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges, and starts file watcher. If the index already exists, it is refreshed.
+
+```json
+{
+  "projectPath": "/workspace"  // optional
+}
+```
+
+#### `arbok:update_memory_bank`
+
+Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.
 
 ```json
 {
@@ -120,9 +156,9 @@ Generates 6 Cline-compliant Memory Bank files:
 - `techContext.md` — Technologies, dependencies, and setup
 - `project-structure.md` — File tree and symbol index
 
-### 6. `arbok_update_rules`
+#### `arbok:update_rules`
 
-Update .clinerules configuration files for Cline integration. Creates config files if missing, or updates existing ones.
+Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.
 
 ```json
 {
@@ -154,7 +190,7 @@ The server uses SQLite to store indexed symbols and relationships. The database 
 - **`src/types/`**: TypeScript type definitions
 - **`src/database/`**: SQLite connection and queries
 - **`src/core/`**: AST parsing and node/edge extraction
-- **`src/observer/`**: File system watcher
+- **`src/watcher/`**: File system watcher
 - **`src/mcp/`**: MCP server and tool implementations
 
 ## Supported Languages
