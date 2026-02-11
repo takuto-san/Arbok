@@ -85,26 +85,6 @@ export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): st
   // 1. Create base rules file
   const baseRules = `# Arbok Integration Rules
 
-## Tool Usage & Mode Switching Protocol
-
-### Arbok Tools are Intermediate Steps
-All \`arbok_*\` tools (e.g., \`arbok_get_file_structure\`, \`arbok_get_symbols\`, \`arbok_get_dependencies\`) are specialized for **Context Gathering**, **Analysis**, and **Planning** only. They do not modify code logic or solve user requests on their own.
-
-- When you execute an \`arbok_*\` tool, treat the output as *information to be analyzed*, not as the final result of the task.
-- Successfully running an \`arbok_*\` tool does NOT mean the user's request is complete.
-
-### Mandatory Mode Switch (Plan Mode)
-If you are currently in **Plan Mode** and you have executed an \`arbok_*\` tool to gather context:
-- **DO NOT** attempt to write code or apply fixes immediately within Plan Mode.
-- **DO NOT** return a "Task Completed" success response immediately after the tool output.
-- **INSTEAD**, output a plan based on the tool's findings and ask the user to switch to **Act Mode** to perform the actual implementation.
-
-**Response Template for Plan Mode:**
-> "I have analyzed the project structure/dependencies using \`arbok\`. Based on this, here is the plan: [Brief Plan]. **Please switch to Act Mode so I can proceed with editing the files.**"
-
-### Definition of Completion
-The task is only "complete" when the actual code changes (via \`write_to_file\`, \`replace_in_file\`, etc.) have been verified. Merely running \`arbok_get_*\` is never the completion state for a modification request.
-
 ## File Access Rules
 When you need to understand a file's structure, ALWAYS use the \`arbok_get_file_structure\` tool first before reading the entire file.
 Only read the full file content when you need to modify specific lines or understand detailed implementation logic.

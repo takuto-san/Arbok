@@ -89,7 +89,7 @@ export async function createMCPServer(): Promise<Server> {
         // get tools
         {
           name: 'arbok_get_file_structure',
-          description: 'Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code. This tool is for context gathering only — it does not modify code. In Plan Mode, use its output to formulate a plan, then switch to Act Mode to make changes.',
+          description: 'Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -103,7 +103,7 @@ export async function createMCPServer(): Promise<Server> {
         },
         {
           name: 'arbok_get_symbols',
-          description: 'List symbols matching a name across the entire project. Supports partial matching. This tool is for context gathering only — it does not modify code. In Plan Mode, use its output to formulate a plan, then switch to Act Mode to make changes.',
+          description: 'List symbols matching a name across the entire project. Supports partial matching.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -122,7 +122,7 @@ export async function createMCPServer(): Promise<Server> {
         },
         {
           name: 'arbok_get_dependencies',
-          description: 'Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships. This tool is for context gathering only — it does not modify code. In Plan Mode, use its output to formulate a plan, then switch to Act Mode to make changes.',
+          description: 'Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships.',
           inputSchema: {
             type: 'object',
             properties: {
