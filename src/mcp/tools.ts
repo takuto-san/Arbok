@@ -41,6 +41,7 @@ const SCAN_IGNORE_PATTERNS: string[] = [
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
   projectPath: z.string().optional(),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
 export const ArbokGetFileStructureSchema = z.object({
@@ -59,10 +60,12 @@ export const ArbokGetDependenciesSchema = z.object({
 
 export const ArbokUpdateMemorySchema = z.object({
   memoryBankPath: z.string().optional(),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
 export const ArbokSetupRulesSchema = z.object({
   projectPath: z.string().optional(),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
 /**

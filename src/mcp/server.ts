@@ -25,6 +25,21 @@ import {
 
 const PLAN_MODE_META_INSTRUCTION = '\n\n[IMPORTANT INSTRUCTION]: If you executed this tool in Plan Mode, the task is NOT complete. You have only prepared the environment. You MUST now ask the user to switch to Act Mode to proceed with the actual implementation.';
 
+const EXECUTE_PROPERTY = {
+  execute: {
+    type: 'boolean',
+    description: "Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview).",
+  },
+} as const;
+
+function dryRunResponse(toolName: string): string {
+  return JSON.stringify({
+    status: 'dry-run',
+    message: 'Configuration valid. Ready to initialize.',
+    nextStep: "SWITCH TO ACT MODE and re-run this tool with 'execute: true' to apply changes.",
+  }, null, 2);
+}
+
 /**
  * Create and configure the MCP server
  */
@@ -59,6 +74,7 @@ export async function createMCPServer(): Promise<Server> {
                 type: 'string',
                 description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
               },
+              ...EXECUTE_PROPERTY,
             },
           },
         },
@@ -72,6 +88,7 @@ export async function createMCPServer(): Promise<Server> {
                 type: 'string',
                 description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
               },
+              ...EXECUTE_PROPERTY,
             },
           },
         },
@@ -85,6 +102,7 @@ export async function createMCPServer(): Promise<Server> {
                 type: 'string',
                 description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
               },
+              ...EXECUTE_PROPERTY,
             },
           },
         },
@@ -150,6 +168,7 @@ export async function createMCPServer(): Promise<Server> {
                 type: 'string',
                 description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
               },
+              ...EXECUTE_PROPERTY,
             },
           },
         },
@@ -163,6 +182,7 @@ export async function createMCPServer(): Promise<Server> {
                 type: 'string',
                 description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
               },
+              ...EXECUTE_PROPERTY,
             },
           },
         },
@@ -176,6 +196,7 @@ export async function createMCPServer(): Promise<Server> {
                 type: 'string',
                 description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
               },
+              ...EXECUTE_PROPERTY,
             },
           },
         },
@@ -194,18 +215,30 @@ export async function createMCPServer(): Promise<Server> {
         // init tools
         case 'arbok:init_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = await arbokInitIndex(validatedArgs);
           break;
         }
 
         case 'arbok:init_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = arbokInitMemoryBank(validatedArgs);
           break;
         }
 
         case 'arbok:init_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = arbokInitRules(validatedArgs);
           break;
         }
@@ -232,18 +265,30 @@ export async function createMCPServer(): Promise<Server> {
         // update tools
         case 'arbok:update_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = await arbokInit(validatedArgs);
           break;
         }
 
         case 'arbok:update_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = arbokUpdateMemory(validatedArgs);
           break;
         }
 
         case 'arbok:update_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = arbokSetupRules(validatedArgs);
           break;
         }
