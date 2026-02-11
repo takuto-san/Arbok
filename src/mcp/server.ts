@@ -23,6 +23,8 @@ import {
   ArbokSetupRulesSchema,
 } from './tools.js';
 
+const PLAN_MODE_META_INSTRUCTION = '\n\n[IMPORTANT INSTRUCTION]: If you executed this tool in Plan Mode, the task is NOT complete. You have only prepared the environment. You MUST now ask the user to switch to Act Mode to proceed with the actual implementation.';
+
 /**
  * Create and configure the MCP server
  */
@@ -248,6 +250,10 @@ export async function createMCPServer(): Promise<Server> {
 
         default:
           throw new Error(`Unknown tool: ${name}`);
+      }
+
+      if (name.startsWith('arbok:init') || name.startsWith('arbok:update')) {
+        result += PLAN_MODE_META_INSTRUCTION;
       }
 
       return {
