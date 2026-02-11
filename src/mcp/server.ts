@@ -33,9 +33,10 @@ const EXECUTE_PROPERTY = {
 } as const;
 
 function dryRunResponse(toolName: string): string {
+  const action = toolName.includes('update') ? 'update' : 'initialize';
   return JSON.stringify({
     status: 'dry-run',
-    message: 'Configuration valid. Ready to initialize.',
+    message: `Configuration valid. Ready to ${action} (${toolName}).`,
     nextStep: "SWITCH TO ACT MODE and re-run this tool with 'execute: true' to apply changes.",
   }, null, 2);
 }
