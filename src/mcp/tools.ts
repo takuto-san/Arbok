@@ -483,7 +483,7 @@ function detectMemoryBankState(memoryBankPath: string): { state: 'missing' | 'pa
  * - Act Mode (`execute: true`): creates / repairs the Memory Bank.
  */
 export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = path.resolve(process.cwd(), args.memoryBankPath || 'memory-bank');
+  const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath);
   const { state, missingFiles } = detectMemoryBankState(memoryBankPath);
 
   // ── Plan Mode (dry run) ──────────────────────────────────────────────
@@ -493,7 +493,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
         return JSON.stringify({
           success: false,
           state,
-          message: 'Memory Bank directory not found.',
+          message: `Directory NOT found at ${memoryBankPath}. Please SWITCH TO ACT MODE to create it.`,
           nextStep: 'Please SWITCH TO ACT MODE and run this tool again to CREATE the Memory Bank.',
           memoryBankPath,
         }, null, 2);
@@ -502,7 +502,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
         return JSON.stringify({
           success: false,
           state,
-          message: 'Memory Bank directory exists but is missing required files.',
+          message: `Directory exists at ${memoryBankPath} but is empty/incomplete. Please SWITCH TO ACT MODE to repair.`,
           missingFiles,
           nextStep: 'Please SWITCH TO ACT MODE and run this tool again to REPAIR/GENERATE missing files.',
           memoryBankPath,
@@ -512,7 +512,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
         return JSON.stringify({
           success: true,
           state,
-          message: 'Memory Bank is fully initialized.',
+          message: `Memory Bank already exists at ${memoryBankPath}. Use update tool.`,
           nextStep: 'To update the content, SWITCH TO ACT MODE and run `arbok:update_memory_bank`.',
           memoryBankPath,
         }, null, 2);
@@ -524,13 +524,22 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
     return JSON.stringify({
       success: true,
       state,
-      message: 'Memory Bank is fully initialized. No action taken.',
+      message: `Memory Bank already exists at ${memoryBankPath}. Use update tool.`,
       nextStep: 'To update the content, run `arbok:update_memory_bank`.',
       memoryBankPath,
     }, null, 2);
   }
 
-  return arbokUpdateMemory({ memoryBankPath });
+  return arbokUpdateMemory({ memoryBankPath, execute: true });
+}
+
+/**
+ * Resolve the memory bank path to an absolute path.
+ * Uses `path.resolve(process.cwd(), ...)` to ensure correct targeting.
+ */
+function resolveMemoryBankPath(memoryBankPath?: string): string {
+  const targetPath = memoryBankPath || config.memoryBankPath;
+  return path.resolve(process.cwd(), targetPath);
 }
 
 /**
@@ -539,9 +548,11 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
  * If they already exist, they are updated with the current project state (Update phase).
  */
 export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+  const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath);
   const isUpdate = existsSync(memoryBankPath);
   
+  console.error(`Checking at: ${memoryBankPath}`);
+
   // Ensure memory bank directory exists
   mkdirSync(memoryBankPath, { recursive: true });
 
@@ -587,12 +598,17 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
   writeFileSync(projectStructurePath, projectStructure);
   filesCreated.push(projectStructurePath);
 
+  // Verify files were actually written
+  const verifiedFiles = filesCreated.filter(f => existsSync(f));
+
   return JSON.stringify({
-    success: true,
+    success: verifiedFiles.length === filesCreated.length,
     message: isUpdate
-      ? 'Memory Bank updated successfully'
-      : 'Memory Bank initialized successfully',
+      ? `Memory Bank updated successfully at ${memoryBankPath}`
+      : `Memory Bank initialized successfully at ${memoryBankPath}`,
+    memoryBankPath,
     files: filesCreated,
+    verified: verifiedFiles.length === filesCreated.length,
     stats: {
       files: stats.files,
       nodes: stats.nodes,
