@@ -1090,7 +1090,7 @@ function generateProjectStructure(nodes: ArbokNode[]): string {
  * This does NOT perform any symbol analysis or AST parsing.
  */
 function generateProjectStructureFromFileTree(projectPath: string): string {
-  const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.arbok', 'memory-bank']);
+  const IGNORED_ENTRIES = new Set(['node_modules', '.git', 'dist', '.arbok', 'memory-bank']);
 
   function buildTree(dirPath: string, prefix: string, depth: number): string {
     if (depth > 4) return '';
@@ -1105,11 +1105,11 @@ function generateProjectStructureFromFileTree(projectPath: string): string {
     const dirs: string[] = [];
     const files: string[] = [];
     for (const entry of entries) {
-      if (entry.startsWith('.') && depth === 0 && entry !== '.clinerules') continue;
+      if (IGNORED_ENTRIES.has(entry)) continue;
       const fullPath = path.join(dirPath, entry);
       try {
         if (statSync(fullPath).isDirectory()) {
-          if (!IGNORED_DIRS.has(entry)) dirs.push(entry);
+          dirs.push(entry);
         } else {
           files.push(entry);
         }
