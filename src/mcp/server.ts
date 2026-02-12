@@ -55,9 +55,10 @@ export async function createMCPServer(): Promise<Server> {
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
             },
+            required: ['projectPath'],
           },
         },
         {
@@ -66,11 +67,16 @@ export async function createMCPServer(): Promise<Server> {
           inputSchema: {
             type: 'object',
             properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Absolute path to the project directory. REQUIRED.',
+              },
               memoryBankPath: {
                 type: 'string',
-                description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
+                description: 'Path to memory bank directory (optional, defaults to memory-bank/ relative to projectPath)',
               },
             },
+            required: ['projectPath'],
           },
         },
         {
@@ -81,9 +87,10 @@ export async function createMCPServer(): Promise<Server> {
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
             },
+            required: ['projectPath'],
           },
         },
         // get tools
@@ -146,9 +153,10 @@ export async function createMCPServer(): Promise<Server> {
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
             },
+            required: ['projectPath'],
           },
         },
         {
@@ -157,11 +165,16 @@ export async function createMCPServer(): Promise<Server> {
           inputSchema: {
             type: 'object',
             properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Absolute path to the project directory. REQUIRED.',
+              },
               memoryBankPath: {
                 type: 'string',
-                description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
+                description: 'Path to memory bank directory (optional, defaults to memory-bank/ relative to projectPath)',
               },
             },
+            required: ['projectPath'],
           },
         },
         {
@@ -172,9 +185,10 @@ export async function createMCPServer(): Promise<Server> {
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
             },
+            required: ['projectPath'],
           },
         },
       ],

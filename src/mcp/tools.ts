@@ -22,7 +22,7 @@ import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
-  projectPath: z.string().optional(),
+  projectPath: z.string().min(1),
 });
 
 export const ArbokGetFileStructureSchema = z.object({
@@ -40,11 +40,12 @@ export const ArbokGetDependenciesSchema = z.object({
 });
 
 export const ArbokUpdateMemorySchema = z.object({
+  projectPath: z.string().min(1),
   memoryBankPath: z.string().optional(),
 });
 
 export const ArbokSetupRulesSchema = z.object({
-  projectPath: z.string().optional(),
+  projectPath: z.string().min(1),
 });
 
 /**
@@ -52,7 +53,16 @@ export const ArbokSetupRulesSchema = z.object({
  * If .clinerules already exists, skip creation and return a message.
  */
 export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
-  const projectPath = args.projectPath || config.projectPath;
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize rules in a non-existent directory.`,
+    }, null, 2);
+  }
+
   const clineruleDir = path.join(projectPath, '.clinerules');
 
   if (existsSync(clineruleDir)) {
@@ -72,7 +82,15 @@ export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): str
  * If they already exist, they are updated with necessary changes (Update phase).
  */
 export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
-  const projectPath = args.projectPath || config.projectPath;
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot setup rules in a non-existent directory.`,
+    }, null, 2);
+  }
   
   const clineruleDir = path.join(projectPath, '.clinerules');
   const workflowsDir = path.join(clineruleDir, 'workflows');
@@ -174,7 +192,16 @@ Run this workflow when starting work on this project for the first time or after
  * If the index already exists, skip creation and return a message.
  */
 export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  const projectPath = args.projectPath || config.projectPath;
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize index in a non-existent directory.`,
+    }, null, 2);
+  }
+
   const dbPath = path.join(projectPath, '.arbok', 'index.db');
 
   if (existsSync(dbPath)) {
@@ -200,8 +227,16 @@ export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Pro
  * Initialize/re-index the project
  */
 export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  const projectPath = args.projectPath || config.projectPath;
-  
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot index a non-existent directory.`,
+    }, null, 2);
+  }
+
   console.error(`Initializing Arbok for project: ${projectPath}`);
 
   // Ensure parsers are initialized
@@ -290,7 +325,7 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
   }
 
   // Auto-generate Memory Bank
-  arbokUpdateMemory({ memoryBankPath: config.memoryBankPath });
+  arbokUpdateMemory({ projectPath, memoryBankPath: config.memoryBankPath });
   console.error('Memory Bank auto-generated');
 
   const stats = getCounts();
@@ -428,9 +463,20 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
  * If the memory-bank directory already exists, skip creation and return a message.
  */
 export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+  const projectPath = args.projectPath;
 
-  if (existsSync(memoryBankPath)) {
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize memory bank in a non-existent directory.`,
+    }, null, 2);
+  }
+
+  const targetPath = path.resolve(projectPath, args.memoryBankPath || 'memory-bank');
+  console.error("[Arbok] Target Absolute Path:", targetPath);
+
+  if (existsSync(targetPath)) {
     return JSON.stringify({
       success: true,
       message: 'Memory Bank already exists. Use arbok_update_memory_bank to update.',
@@ -438,7 +484,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
     }, null, 2);
   }
 
-  return arbokUpdateMemory({ memoryBankPath });
+  return arbokUpdateMemory({ projectPath, memoryBankPath: targetPath });
 }
 
 /**
@@ -447,7 +493,19 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
  * If they already exist, they are updated with the current project state (Update phase).
  */
 export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot update memory bank in a non-existent directory.`,
+    }, null, 2);
+  }
+
+  const memoryBankPath = path.resolve(projectPath, args.memoryBankPath || 'memory-bank');
+  console.error("[Arbok] Target Absolute Path:", memoryBankPath);
+
   const isUpdate = existsSync(memoryBankPath);
   
   // Ensure memory bank directory exists
@@ -455,7 +513,6 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
 
   const allNodes = getAllNodes();
   const stats = getCounts();
-  const projectPath = config.projectPath;
 
   const filesCreated: string[] = [];
 
