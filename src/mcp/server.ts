@@ -225,10 +225,6 @@ export async function createMCPServer(): Promise<Server> {
         // init tools
         case 'arbok:init_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
-          if (!validatedArgs.execute) {
-            result = dryRunResponse(name);
-            break;
-          }
           result = await arbokInitIndex(validatedArgs);
           break;
         }
@@ -241,10 +237,6 @@ export async function createMCPServer(): Promise<Server> {
 
         case 'arbok:init_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
-          if (!validatedArgs.execute) {
-            result = dryRunResponse(name);
-            break;
-          }
           result = arbokInitRules(validatedArgs);
           break;
         }
