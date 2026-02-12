@@ -72,29 +72,58 @@ export const ArbokSetupRulesSchema = z.object({
 /**
  * Initialize .clinerules configuration files only if they do not exist.
  * If .clinerules already exists, skip creation and return a message.
+ *
+ * - Plan Mode (`execute` falsy): returns a JSON diagnostic with `message` and `nextStep`.
+ * - Act Mode (`execute: true`): creates the .clinerules directory and files.
  */
 export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
-  const projectPath = args.projectPath;
-
-  if (!existsSync(projectPath)) {
+  if (!existsSync(args.projectPath)) {
     return JSON.stringify({
       success: false,
       isError: true,
-      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize rules in a non-existent project.`,
+      message: `The provided projectPath does not exist: '${args.projectPath}'. Cannot initialize rules in a non-existent project.`,
     }, null, 2);
   }
 
-  const clineruleDir = path.join(projectPath, '.clinerules');
+  const absolutePath = path.resolve(args.projectPath, '.clinerules');
 
-  if (existsSync(clineruleDir)) {
+  console.error(`[Arbok] arbokInitRules called with execute=${args.execute}`);
+  console.error(`[Arbok] Target Absolute Path: ${absolutePath}`);
+
+  const exists = existsSync(absolutePath);
+  console.error(`[Arbok] Directory exists: ${exists}`);
+
+  if (exists) {
     return JSON.stringify({
       success: true,
-      message: '.clinerules already exists. Use arbok:update_rules to update.',
+      status: 'exists',
+      debug_checked_path: absolutePath,
+      message: `.clinerules already exists at ${absolutePath}. Use arbok:update_rules to update.`,
       skipped: true,
     }, null, 2);
   }
 
-  return arbokSetupRules({ projectPath });
+  // Directory does not exist
+  if (!args.execute) {
+    return JSON.stringify({
+      success: true,
+      status: 'missing',
+      debug_checked_path: absolutePath,
+      message: `Ready to initialize .clinerules at ${absolutePath}. Please SWITCH TO ACT MODE and run this tool again with 'execute: true' to proceed.`,
+    }, null, 2);
+  }
+
+  // Act Mode: create and initialize
+  console.error(`[Arbok] Act Mode: creating .clinerules at ${absolutePath}`);
+  const result = arbokSetupRules({ projectPath: args.projectPath, execute: true });
+
+  // Post-write verification
+  if (!existsSync(absolutePath)) {
+    throw new Error(`[CRITICAL FAILURE] Failed to create .clinerules directory at: ${absolutePath}`);
+  }
+  console.error(`[Arbok] Verified .clinerules directory exists: ${absolutePath}`);
+
+  return result;
 }
 
 /**
@@ -191,26 +220,36 @@ Run this workflow when starting work on this project for the first time or after
 /**
  * Initialize/index the project only if the index does not exist.
  * If the index already exists, skip creation and return a message.
+ *
+ * - Plan Mode (`execute` falsy): returns a JSON diagnostic with `message` and `nextStep`.
+ * - Act Mode (`execute: true`): creates the .arbok directory and index.
  */
 export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  const projectPath = args.projectPath;
-
-  if (!existsSync(projectPath)) {
+  if (!existsSync(args.projectPath)) {
     return JSON.stringify({
       success: false,
       isError: true,
-      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize index in a non-existent project.`,
+      message: `The provided projectPath does not exist: '${args.projectPath}'. Cannot initialize index in a non-existent project.`,
     }, null, 2);
   }
 
-  const dbPath = path.join(projectPath, '.arbok', 'index.db');
+  const absolutePath = path.resolve(args.projectPath, '.arbok');
+  const dbPath = path.join(absolutePath, 'index.db');
 
-  if (existsSync(dbPath)) {
+  console.error(`[Arbok] arbokInitIndex called with execute=${args.execute}`);
+  console.error(`[Arbok] Target Absolute Path: ${absolutePath}`);
+
+  const dbExists = existsSync(dbPath);
+  console.error(`[Arbok] Index DB exists: ${dbExists}`);
+
+  if (dbExists) {
     const stats = getCounts();
     if (stats.nodes > 0) {
       return JSON.stringify({
         success: true,
-        message: 'Index already exists. Use arbok:update_index to re-index.',
+        status: 'exists',
+        debug_checked_path: absolutePath,
+        message: `Index already exists at ${absolutePath}. Use arbok:update_index to re-index.`,
         skipped: true,
         stats: {
           files_indexed: stats.files,
@@ -221,7 +260,27 @@ export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Pro
     }
   }
 
-  return arbokInit(args);
+  // Index does not exist or is empty
+  if (!args.execute) {
+    return JSON.stringify({
+      success: true,
+      status: 'missing',
+      debug_checked_path: absolutePath,
+      message: `Ready to initialize .arbok index at ${absolutePath}. Please SWITCH TO ACT MODE and run this tool again with 'execute: true' to proceed.`,
+    }, null, 2);
+  }
+
+  // Act Mode: create and initialize
+  console.error(`[Arbok] Act Mode: creating index at ${absolutePath}`);
+  const result = await arbokInit(args);
+
+  // Post-write verification
+  if (!existsSync(dbPath)) {
+    throw new Error(`[CRITICAL FAILURE] Failed to create index database at: ${dbPath}`);
+  }
+  console.error(`[Arbok] Verified index DB exists: ${dbPath}`);
+
+  return result;
 }
 
 /**
@@ -339,17 +398,6 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
 
   // Start the file watcher
   startWatcher(projectPath);
-
-  // Auto-setup .clinerules if not present
-  const clineruleDir = path.join(projectPath, '.clinerules');
-  if (!existsSync(clineruleDir)) {
-    arbokSetupRules({ projectPath });
-    console.error('.clinerules auto-generated');
-  }
-
-  // Auto-generate Memory Bank
-  arbokUpdateMemory({ projectPath, memoryBankPath: config.memoryBankPath, execute: true });
-  console.error('Memory Bank auto-generated');
 
   const stats = getCounts();
 
