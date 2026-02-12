@@ -484,7 +484,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
     }, null, 2);
   }
 
-  return arbokUpdateMemory({ projectPath, memoryBankPath: targetPath });
+  return arbokUpdateMemory({ projectPath, memoryBankPath: args.memoryBankPath });
 }
 
 /**
