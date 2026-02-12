@@ -226,15 +226,21 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
   // ---- Act Mode ----
   console.error(`[Arbok] arbokInit Act Mode for: ${absoluteProjectPath}`);
 
-  let indexStatus = 'Skipped';
+  let indexStatus = 'Skipped (Already exists)';
   let indexNodes = 0;
   let indexFiles = 0;
 
-  // Step 1: Index
+  // Step A: Index
   if (indexNeeded) {
     console.error(`[Arbok] Creating project index...`);
     mkdirSync(arbokDir, { recursive: true });
     await arbokReindex({ projectPath: absoluteProjectPath, execute: true });
+
+    // POST-WRITE CHECK: Verify .arbok directory exists on disk
+    if (!existsSync(arbokDir)) {
+      throw new Error(`[CRITICAL FAILURE] Index reported success but .arbok directory does not exist at: ${arbokDir}`);
+    }
+
     const counts = getCounts();
     indexNodes = counts.nodes;
     indexFiles = counts.files;
@@ -245,7 +251,7 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
     indexFiles = counts.files;
   }
 
-  // Step 2: Memory Bank – only create missing files
+  // Step B: Memory Bank – only create missing files
   let mbCreatedCount = 0;
   let mbSkippedCount = 0;
 
@@ -278,8 +284,8 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
     mbSkippedCount = MEMORY_BANK_REQUIRED_FILES.length;
   }
 
-  // Step 3: Cline Rules
-  let clinerulesStatus = 'Skipped';
+  // Step C: Cline Rules
+  let clinerulesStatus = 'Skipped (Already exists)';
 
   if (rulesNeeded) {
     console.error(`[Arbok] Creating .clinerules...`);
@@ -296,7 +302,11 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
       memoryBank: `Created ${mbCreatedCount} file(s) / Skipped ${mbSkippedCount} file(s)`,
       clinerules: clinerulesStatus,
     },
-    stats: { nodes: indexNodes, files: indexFiles + totalFilesWritten },
+    stats: {
+      files_indexed: indexFiles,
+      nodes_created: indexNodes,
+      files_created: totalFilesWritten,
+    },
     path: absoluteProjectPath,
   }, null, 2);
 }
@@ -631,7 +641,7 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
 
   // Memory Bank is a lightweight documentation tool and must NOT query the
   // index database.  Symbol scanning / indexing is the responsibility of
-  // arbok:init_index and arbok:update_index only.
+  // arbok:init and arbok:update_index only.
   const projectPath = args.projectPath;
 
   const filesCreated: string[] = [];
