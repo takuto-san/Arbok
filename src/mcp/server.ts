@@ -80,6 +80,10 @@ export async function createMCPServer(): Promise<Server> {
           inputSchema: {
             type: 'object',
             properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the project directory (optional, defaults to process.cwd())',
+              },
               memoryBankPath: {
                 type: 'string',
                 description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
@@ -174,6 +178,10 @@ export async function createMCPServer(): Promise<Server> {
           inputSchema: {
             type: 'object',
             properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the project directory (optional, defaults to process.cwd())',
+              },
               memoryBankPath: {
                 type: 'string',
                 description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
