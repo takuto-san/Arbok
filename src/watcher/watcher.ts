@@ -14,6 +14,7 @@ import {
 import { arbokUpdateMemory } from '../mcp/tools.js';
 
 let watcher: FSWatcher | null = null;
+let watcherProjectPath: string = config.projectPath;
 let pendingChanges = 0;
 let memoryBankUpdateTimer: NodeJS.Timeout | null = null;
 const MEMORY_BANK_UPDATE_THRESHOLD = 5;
@@ -27,6 +28,8 @@ export function startWatcher(projectPath: string = config.projectPath): void {
     console.error('Watcher already running');
     return;
   }
+
+  watcherProjectPath = projectPath;
 
   console.error(`Starting file watcher for: ${projectPath}`);
 
@@ -181,7 +184,7 @@ async function executeMemoryBankUpdate(): Promise<void> {
   console.error(`Triggering Memory Bank update (${pendingChanges} changes accumulated)`);
   
   try {
-    arbokUpdateMemory({ memoryBankPath: config.memoryBankPath, execute: true });
+    arbokUpdateMemory({ projectPath: watcherProjectPath, memoryBankPath: config.memoryBankPath, execute: true });
     console.error('Memory Bank updated successfully');
   } catch (error) {
     console.error('Error updating Memory Bank:', error);
