@@ -73,6 +73,9 @@ export const ArbokUnifiedInitSchema = z.object({
   execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
+/** Number of files created by arbokSetupRules (.clinerules). */
+const CLINERULES_FILE_COUNT = 3;
+
 /**
  * Initialize .clinerules configuration files only if they do not exist.
  * If .clinerules already exists, skip creation and return a message.
@@ -413,7 +416,7 @@ export async function arbokUnifiedInit(args: z.infer<typeof ArbokUnifiedInitSche
     clinerulesStatus = 'Created';
   }
 
-  const totalFilesWritten = mbCreatedCount + (clinerulesStatus === 'Created' ? 3 : 0);
+  const totalFilesWritten = mbCreatedCount + (clinerulesStatus === 'Created' ? CLINERULES_FILE_COUNT : 0);
 
   return JSON.stringify({
     success: true,
