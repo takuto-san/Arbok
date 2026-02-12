@@ -71,12 +71,13 @@ export async function arbokInitAll(args: z.infer<typeof ArbokInitSchema>): Promi
   ];
 
   // Snapshot pre-existing state
+  const memoryBankExists = existsSync(memoryBankPath);
   const preExisting = {
     dotArbok: existsSync(dotArbokPath),
-    memoryBank: existsSync(memoryBankPath),
+    memoryBank: memoryBankExists,
     clinerules: existsSync(dotClinerulesPath),
     memoryBankFiles: memoryBankFiles.reduce<Record<string, boolean>>((acc, f) => {
-      acc[f] = existsSync(path.resolve(memoryBankPath, f));
+      acc[f] = memoryBankExists && existsSync(path.resolve(memoryBankPath, f));
       return acc;
     }, {}),
   };
@@ -139,18 +140,25 @@ export async function arbokInitAll(args: z.infer<typeof ArbokInitSchema>): Promi
   }
 
   // Create individual memory bank files only if they don't exist
-  const allNodes = getAllNodes();
-  const stats = getCounts();
+  const needsMemoryBankFiles = memoryBankFiles.some(f => !preExisting.memoryBankFiles[f]);
+  if (needsMemoryBankFiles) {
+    const allNodes = getAllNodes();
+    const stats = getCounts();
 
-  for (const f of memoryBankFiles) {
-    const filePath = path.resolve(memoryBankPath, f);
-    if (preExisting.memoryBankFiles[f]) {
+    for (const f of memoryBankFiles) {
+      const filePath = path.resolve(memoryBankPath, f);
+      if (preExisting.memoryBankFiles[f]) {
+        results[`memory-bank/${f}`] = 'Skipped (Already exists)';
+      } else {
+        const content = generateMemoryBankFile(f, allNodes, stats, projectPath);
+        writeFileSync(filePath, content);
+        results[`memory-bank/${f}`] = 'Created';
+        filesCreated++;
+      }
+    }
+  } else {
+    for (const f of memoryBankFiles) {
       results[`memory-bank/${f}`] = 'Skipped (Already exists)';
-    } else {
-      const content = generateMemoryBankFile(f, allNodes, stats, projectPath);
-      writeFileSync(filePath, content);
-      results[`memory-bank/${f}`] = 'Created';
-      filesCreated++;
     }
   }
 
@@ -159,9 +167,9 @@ export async function arbokInitAll(args: z.infer<typeof ArbokInitSchema>): Promi
     results['.clinerules/'] = 'Skipped (Already exists)';
   } else {
     mkdirSync(dotClinerulesPath, { recursive: true });
-    arbokSetupRules({ projectPath });
+    const rulesResult = JSON.parse(arbokSetupRules({ projectPath }));
     results['.clinerules/'] = 'Created';
-    filesCreated += 3; // rules.md, update_memory.md, init_arbok.md
+    filesCreated += (rulesResult.files_created?.length ?? 0);
   }
 
   // Start the file watcher
