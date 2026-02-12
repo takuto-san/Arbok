@@ -7,17 +7,13 @@ import {
 import { initParsers } from '../core/parser.js';
 import {
   arbokInit,
-  arbokInitIndex,
-  arbokUnifiedInit,
+  arbokReindex,
   arbokGetFileStructure,
   arbokSearchSymbol,
   arbokGetDependencies,
   arbokUpdateMemory,
-  arbokInitMemoryBank,
   arbokSetupRules,
-  arbokInitRules,
   ArbokInitSchema,
-  ArbokUnifiedInitSchema,
   ArbokGetFileStructureSchema,
   ArbokSearchSymbolSchema,
   ArbokGetDependenciesSchema,
@@ -65,56 +61,6 @@ export async function createMCPServer(): Promise<Server> {
         {
           name: 'arbok:init',
           description: 'Unified project initialization. Sets up the project index (.arbok/), Memory Bank (memory-bank/), and Cline rules (.clinerules/) in one go. Smart and idempotent: only creates what is missing, skips what already exists.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              projectPath: {
-                type: 'string',
-                description: 'Absolute path to the project directory. REQUIRED.',
-              },
-              ...EXECUTE_PROPERTY,
-            },
-            required: ['projectPath'],
-          },
-        },
-        // init tools
-        {
-          name: 'arbok:init_index',
-          description: 'Initialize the project index only if it does not already exist. If the index already exists, this tool does nothing and returns a message. Use arbok:update_index to re-index.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              projectPath: {
-                type: 'string',
-                description: 'Absolute path to the project directory. REQUIRED.',
-              },
-              ...EXECUTE_PROPERTY,
-            },
-            required: ['projectPath'],
-          },
-        },
-        {
-          name: 'arbok:init_memory_bank',
-          description: 'Initialize Memory Bank files only if the memory-bank directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok:update_memory_bank to update.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              projectPath: {
-                type: 'string',
-                description: 'Absolute path to the project directory. REQUIRED.',
-              },
-              memoryBankPath: {
-                type: 'string',
-                description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
-              },
-              ...EXECUTE_PROPERTY,
-            },
-            required: ['projectPath'],
-          },
-        },
-        {
-          name: 'arbok:init_rules',
-          description: 'Initialize .clinerules configuration files only if the .clinerules directory does not already exist. If it already exists, this tool does nothing and returns a message. Use arbok:update_rules to update.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -242,27 +188,8 @@ export async function createMCPServer(): Promise<Server> {
       switch (name) {
         // unified init
         case 'arbok:init': {
-          const validatedArgs = ArbokUnifiedInitSchema.parse(args || {});
-          result = await arbokUnifiedInit(validatedArgs);
-          break;
-        }
-
-        // init tools
-        case 'arbok:init_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
-          result = await arbokInitIndex(validatedArgs);
-          break;
-        }
-
-        case 'arbok:init_memory_bank': {
-          const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
-          result = arbokInitMemoryBank(validatedArgs);
-          break;
-        }
-
-        case 'arbok:init_rules': {
-          const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
-          result = arbokInitRules(validatedArgs);
+          result = await arbokInit(validatedArgs);
           break;
         }
 
@@ -292,7 +219,7 @@ export async function createMCPServer(): Promise<Server> {
             result = dryRunResponse(name);
             break;
           }
-          result = await arbokInit(validatedArgs);
+          result = await arbokReindex(validatedArgs);
           break;
         }
 
