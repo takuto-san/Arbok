@@ -181,7 +181,7 @@ async function executeMemoryBankUpdate(): Promise<void> {
   console.error(`Triggering Memory Bank update (${pendingChanges} changes accumulated)`);
   
   try {
-    arbokUpdateMemory({ memoryBankPath: config.memoryBankPath });
+    arbokUpdateMemory({ memoryBankPath: config.memoryBankPath, execute: true });
     console.error('Memory Bank updated successfully');
   } catch (error) {
     console.error('Error updating Memory Bank:', error);
