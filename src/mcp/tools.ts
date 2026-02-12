@@ -534,11 +534,11 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
   console.error(`[Arbok] arbokInitMemoryBank called with execute=${args.execute}`);
   console.error(`[Arbok] Target Absolute Path: ${absolutePath}`);
 
-  // Step 2: Check existence
+  // Step 3: Check existence
   const exists = existsSync(absolutePath);
   console.error(`[Arbok] Directory exists: ${exists}`);
 
-  // Step 3: Logic flow
+  // Step 4: Logic flow
   if (!exists) {
     if (!args.execute) {
       return JSON.stringify({
