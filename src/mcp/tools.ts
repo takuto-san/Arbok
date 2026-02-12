@@ -524,7 +524,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
     return JSON.stringify({
       success: true,
       state,
-      message: 'Memory Bank is already fully initialized. No action taken.',
+      message: 'Memory Bank is fully initialized. No action taken.',
       nextStep: 'To update the content, run `arbok:update_memory_bank`.',
       memoryBankPath,
     }, null, 2);
