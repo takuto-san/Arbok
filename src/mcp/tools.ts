@@ -600,15 +600,20 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
 
   // Verify files were actually written
   const verifiedFiles = filesCreated.filter(f => existsSync(f));
+  const allVerified = verifiedFiles.length === filesCreated.length;
+  const failedFiles = allVerified ? [] : filesCreated.filter(f => !existsSync(f));
 
   return JSON.stringify({
-    success: verifiedFiles.length === filesCreated.length,
-    message: isUpdate
-      ? `Memory Bank updated successfully at ${memoryBankPath}`
-      : `Memory Bank initialized successfully at ${memoryBankPath}`,
+    success: allVerified,
+    message: allVerified
+      ? (isUpdate
+          ? `Memory Bank updated successfully at ${memoryBankPath}`
+          : `Memory Bank initialized successfully at ${memoryBankPath}`)
+      : `Memory Bank write verification failed at ${memoryBankPath}. ${failedFiles.length} file(s) not written.`,
     memoryBankPath,
     files: filesCreated,
-    verified: verifiedFiles.length === filesCreated.length,
+    verified: allVerified,
+    ...(failedFiles.length > 0 ? { failedFiles } : {}),
     stats: {
       files: stats.files,
       nodes: stats.nodes,
