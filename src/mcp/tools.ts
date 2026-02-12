@@ -634,8 +634,13 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
   }
   console.error(`[Arbok] Directory verified at: ${memoryBankPath}`);
 
-  const allNodes = getAllNodes();
-  const stats = getCounts();
+  // Only query the database if the index exists; otherwise use empty data.
+  // This prevents the .arbok directory from being created as a side effect
+  // when arbokInitMemoryBank calls this function without an existing index.
+  const dbPath = path.join(args.projectPath, '.arbok', 'index.db');
+  const indexExists = existsSync(dbPath);
+  const allNodes = indexExists ? getAllNodes() : [];
+  const stats = indexExists ? getCounts() : { files: 0, nodes: 0, edges: 0 };
   const projectPath = args.projectPath;
 
   const filesCreated: string[] = [];
