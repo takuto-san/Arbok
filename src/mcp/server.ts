@@ -295,7 +295,8 @@ export async function createMCPServer(): Promise<Server> {
           throw new Error(`Unknown tool: ${name}`);
       }
 
-      if (name.startsWith('arbok:init') || name.startsWith('arbok:update')) {
+      const executedInActMode = args && typeof args === 'object' && 'execute' in args && args.execute === true;
+      if ((name.startsWith('arbok:init') || name.startsWith('arbok:update')) && !executedInActMode) {
         result += PLAN_MODE_META_INSTRUCTION;
       }
 
