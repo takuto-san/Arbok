@@ -446,18 +446,87 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
   }, null, 2);
 }
 
+/** Required files for a complete Memory Bank. */
+const MEMORY_BANK_REQUIRED_FILES: string[] = [
+  'productContext.md',
+  'activeContext.md',
+  'progress.md',
+  'systemPatterns.md',
+  'techContext.md',
+  'project-structure.md',
+];
+
 /**
- * Initialize Memory Bank files only if they do not exist.
- * If the memory-bank directory already exists, skip creation and return a message.
+ * Detect the current state of the Memory Bank directory.
+ * Returns 'missing' | 'partial' | 'complete'.
+ */
+function detectMemoryBankState(memoryBankPath: string): { state: 'missing' | 'partial' | 'complete'; missingFiles: string[] } {
+  if (!existsSync(memoryBankPath)) {
+    return { state: 'missing', missingFiles: [...MEMORY_BANK_REQUIRED_FILES] };
+  }
+
+  const missingFiles = MEMORY_BANK_REQUIRED_FILES.filter(
+    (file) => !existsSync(path.join(memoryBankPath, file))
+  );
+
+  if (missingFiles.length > 0) {
+    return { state: 'partial', missingFiles };
+  }
+
+  return { state: 'complete', missingFiles: [] };
+}
+
+/**
+ * Initialize Memory Bank files with 3-state detection.
+ *
+ * - Plan Mode (`execute` falsy): returns a JSON diagnostic with `message` and `nextStep`.
+ * - Act Mode (`execute: true`): creates / repairs the Memory Bank.
  */
 export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+  const memoryBankPath = path.resolve(process.cwd(), args.memoryBankPath || 'memory-bank');
+  const { state, missingFiles } = detectMemoryBankState(memoryBankPath);
 
-  if (existsSync(memoryBankPath)) {
+  // ── Plan Mode (dry run) ──────────────────────────────────────────────
+  if (!args.execute) {
+    switch (state) {
+      case 'missing':
+        return JSON.stringify({
+          success: false,
+          state,
+          message: 'Memory Bank directory not found.',
+          nextStep: 'Please SWITCH TO ACT MODE and run this tool again to CREATE the Memory Bank.',
+          memoryBankPath,
+        }, null, 2);
+
+      case 'partial':
+        return JSON.stringify({
+          success: false,
+          state,
+          message: 'Memory Bank directory exists but is missing required files.',
+          missingFiles,
+          nextStep: 'Please SWITCH TO ACT MODE and run this tool again to REPAIR/GENERATE missing files.',
+          memoryBankPath,
+        }, null, 2);
+
+      case 'complete':
+        return JSON.stringify({
+          success: true,
+          state,
+          message: 'Memory Bank is fully initialized.',
+          nextStep: 'To update the content, SWITCH TO ACT MODE and run `arbok:update_memory_bank`.',
+          memoryBankPath,
+        }, null, 2);
+    }
+  }
+
+  // ── Act Mode (execute) ───────────────────────────────────────────────
+  if (state === 'complete') {
     return JSON.stringify({
       success: true,
-      message: 'Memory Bank already exists. Use arbok:update_memory_bank to update.',
-      skipped: true,
+      state,
+      message: 'Memory Bank is fully initialized. No action taken.',
+      nextStep: 'To update the content, run `arbok:update_memory_bank`.',
+      memoryBankPath,
     }, null, 2);
   }
 

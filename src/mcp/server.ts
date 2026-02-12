@@ -221,10 +221,6 @@ export async function createMCPServer(): Promise<Server> {
 
         case 'arbok:init_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
-          if (!validatedArgs.execute) {
-            result = dryRunResponse(name);
-            break;
-          }
           result = arbokInitMemoryBank(validatedArgs);
           break;
         }
