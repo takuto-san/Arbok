@@ -23,7 +23,6 @@ import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
   projectPath: z.string().optional(),
-  execute: z.boolean().optional().default(true),
 });
 
 export const ArbokGetFileStructureSchema = z.object({
@@ -49,244 +48,22 @@ export const ArbokSetupRulesSchema = z.object({
 });
 
 /**
- * Unified initialization tool: arbok:init
- * Consolidates index, memory bank, and rules initialization into a single tool.
- * Supports plan mode (execute: false) and act mode (execute: true).
+ * Initialize .clinerules configuration files only if they do not exist.
+ * If .clinerules already exists, skip creation and return a message.
  */
-export async function arbokInitAll(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
+export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
   const projectPath = args.projectPath || config.projectPath;
-  const execute = args.execute !== false;
+  const clineruleDir = path.join(projectPath, '.clinerules');
 
-  const dotArbokPath = path.resolve(projectPath, '.arbok');
-  const memoryBankPath = path.resolve(projectPath, 'memory-bank');
-  const dotClinerulesPath = path.resolve(projectPath, '.clinerules');
-
-  const memoryBankFiles = [
-    'productContext.md',
-    'activeContext.md',
-    'progress.md',
-    'systemPatterns.md',
-    'techContext.md',
-    'project-structure.md',
-  ];
-
-  // Snapshot pre-existing state
-  const memoryBankExists = existsSync(memoryBankPath);
-  const preExisting = {
-    dotArbok: existsSync(dotArbokPath),
-    memoryBank: memoryBankExists,
-    clinerules: existsSync(dotClinerulesPath),
-    memoryBankFiles: memoryBankFiles.reduce<Record<string, boolean>>((acc, f) => {
-      acc[f] = memoryBankExists && existsSync(path.resolve(memoryBankPath, f));
-      return acc;
-    }, {}),
-  };
-
-  // --- Plan Mode ---
-  if (!execute) {
-    const plan: Record<string, string> = {};
-    plan['.arbok/'] = preExisting.dotArbok ? 'Exists' : 'Will be created';
-    plan['memory-bank/'] = preExisting.memoryBank ? 'Exists' : 'Will be created';
-    for (const f of memoryBankFiles) {
-      plan[`memory-bank/${f}`] = preExisting.memoryBankFiles[f] ? 'Exists' : 'Will be created';
-    }
-    plan['.clinerules/'] = preExisting.clinerules ? 'Exists' : 'Will be created';
-
+  if (existsSync(clineruleDir)) {
     return JSON.stringify({
       success: true,
-      mode: 'plan',
-      message: 'Initialization plan. Call with execute: true to apply.',
-      plan,
+      message: '.clinerules already exists. Use arbok_update_rules to update.',
+      skipped: true,
     }, null, 2);
   }
 
-  // --- Act Mode ---
-  const results: Record<string, string> = {};
-  let filesIndexed = 0;
-  let nodesCreated = 0;
-  let filesCreated = 0;
-
-  // Step A: Index
-  if (preExisting.dotArbok) {
-    const stats = getCounts();
-    if (stats.nodes > 0) {
-      results['.arbok/'] = 'Skipped (Already exists)';
-      filesIndexed = stats.files;
-      nodesCreated = stats.nodes;
-    } else {
-      // Directory exists but empty index — re-index
-      const indexResult = await runIndexing(projectPath);
-      results['.arbok/'] = 'Created';
-      filesIndexed = indexResult.filesIndexed;
-      nodesCreated = indexResult.nodesCreated;
-    }
-  } else {
-    const indexResult = await runIndexing(projectPath);
-    // Post-write check
-    if (!existsSync(dotArbokPath)) {
-      throw new Error(`Fatal: .arbok directory was not created at ${dotArbokPath} after indexing.`);
-    }
-    results['.arbok/'] = 'Created';
-    filesIndexed = indexResult.filesIndexed;
-    nodesCreated = indexResult.nodesCreated;
-  }
-
-  // Step B: Memory Bank
-  if (preExisting.memoryBank) {
-    results['memory-bank/'] = 'Skipped (Already exists)';
-  } else {
-    mkdirSync(memoryBankPath, { recursive: true });
-    results['memory-bank/'] = 'Created';
-  }
-
-  // Create individual memory bank files only if they don't exist
-  const needsMemoryBankFiles = memoryBankFiles.some(f => !preExisting.memoryBankFiles[f]);
-  if (needsMemoryBankFiles) {
-    const allNodes = getAllNodes();
-    const stats = getCounts();
-
-    for (const f of memoryBankFiles) {
-      const filePath = path.resolve(memoryBankPath, f);
-      if (preExisting.memoryBankFiles[f]) {
-        results[`memory-bank/${f}`] = 'Skipped (Already exists)';
-      } else {
-        const content = generateMemoryBankFile(f, allNodes, stats, projectPath);
-        writeFileSync(filePath, content);
-        results[`memory-bank/${f}`] = 'Created';
-        filesCreated++;
-      }
-    }
-  } else {
-    for (const f of memoryBankFiles) {
-      results[`memory-bank/${f}`] = 'Skipped (Already exists)';
-    }
-  }
-
-  // Step C: Rules
-  if (preExisting.clinerules) {
-    results['.clinerules/'] = 'Skipped (Already exists)';
-  } else {
-    mkdirSync(dotClinerulesPath, { recursive: true });
-    const rulesResult = JSON.parse(arbokSetupRules({ projectPath }));
-    results['.clinerules/'] = 'Created';
-    filesCreated += (rulesResult.files_created?.length ?? 0);
-  }
-
-  // Start the file watcher
-  startWatcher(projectPath);
-
-  return JSON.stringify({
-    success: true,
-    mode: 'act',
-    message: 'Initialization complete.',
-    results,
-    stats: {
-      files_indexed: filesIndexed,
-      nodes_created: nodesCreated,
-      files_created: filesCreated,
-    },
-  }, null, 2);
-}
-
-/**
- * Run the indexing pipeline (parse files, extract nodes, resolve edges).
- */
-async function runIndexing(projectPath: string): Promise<{ filesIndexed: number; nodesCreated: number }> {
-  const { initParsers } = await import('../core/parser.js');
-  await initParsers();
-
-  clearDatabase();
-
-  const patterns = [
-    '**/*.ts',
-    '**/*.tsx',
-    '**/*.js',
-    '**/*.jsx',
-    '**/*.py',
-  ];
-
-  const files = await fg(patterns, {
-    cwd: projectPath,
-    ignore: config.watchIgnorePatterns,
-    absolute: true,
-  });
-
-  let totalNodes = 0;
-  const allFileNodes: { filePath: string; nodes: Omit<ArbokNode, 'updated_at'>[] }[] = [];
-
-  for (const filePath of files) {
-    try {
-      const ext = path.extname(filePath);
-      if (!isSupportedExtension(ext)) continue;
-
-      const content = readFileSync(filePath, 'utf-8');
-      const tree = parseFile(content, ext);
-
-      if (!tree) {
-        console.error(`Failed to parse: ${filePath}`);
-        continue;
-      }
-
-      const relativePath = path.relative(projectPath, filePath);
-      const nodes = extractNodes(tree, relativePath, content);
-
-      if (nodes.length > 0) {
-        insertNodes(nodes);
-        allFileNodes.push({ filePath: relativePath, nodes });
-        totalNodes += nodes.length;
-      }
-    } catch (error) {
-      console.error(`Error processing ${filePath}:`, error);
-    }
-  }
-
-  for (const fileData of allFileNodes) {
-    try {
-      const fullPath = path.join(projectPath, fileData.filePath);
-      const content = readFileSync(fullPath, 'utf-8');
-      const ext = path.extname(fullPath);
-      const tree = parseFile(content, ext);
-
-      if (tree) {
-        const edges = resolveEdges(tree, fileData.filePath, content, fileData.nodes);
-        if (edges.length > 0) {
-          insertEdges(edges);
-        }
-      }
-    } catch (error) {
-      console.error(`Error resolving edges for ${fileData.filePath}:`, error);
-    }
-  }
-
-  const stats = getCounts();
-  return { filesIndexed: stats.files, nodesCreated: totalNodes };
-}
-
-/**
- * Generate a specific memory bank file by name.
- */
-function generateMemoryBankFile(
-  fileName: string,
-  allNodes: ArbokNode[],
-  stats: { files: number; nodes: number; edges: number },
-  projectPath: string,
-): string {
-  switch (fileName) {
-    case 'productContext.md':
-      return generateProductContext(allNodes, projectPath);
-    case 'activeContext.md':
-      return generateActiveContext(allNodes);
-    case 'progress.md':
-      return generateProgress(allNodes, stats);
-    case 'systemPatterns.md':
-      return generateSystemPatterns(allNodes);
-    case 'techContext.md':
-      return generateTechContext(projectPath, allNodes);
-    case 'project-structure.md':
-      return generateProjectStructure(allNodes);
-    default:
-      return `# ${fileName}\n\nGenerated by Arbok.\n`;
-  }
+  return arbokSetupRules({ projectPath });
 }
 
 /**
@@ -393,10 +170,140 @@ Run this workflow when starting work on this project for the first time or after
 }
 
 /**
+ * Initialize/index the project only if the index does not exist.
+ * If the index already exists, skip creation and return a message.
+ */
+export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
+  const projectPath = args.projectPath || config.projectPath;
+  const dbPath = path.join(projectPath, '.arbok', 'index.db');
+
+  if (existsSync(dbPath)) {
+    const stats = getCounts();
+    if (stats.nodes > 0) {
+      return JSON.stringify({
+        success: true,
+        message: 'Index already exists. Use arbok_update_index to re-index.',
+        skipped: true,
+        stats: {
+          files_indexed: stats.files,
+          nodes_created: stats.nodes,
+          edges_created: stats.edges,
+        },
+      }, null, 2);
+    }
+  }
+
+  return arbokInit(args);
+}
+
+/**
  * Initialize/re-index the project
  */
 export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  return arbokInitAll(args);
+  const projectPath = args.projectPath || config.projectPath;
+  
+  console.error(`Initializing Arbok for project: ${projectPath}`);
+
+  // Ensure parsers are initialized
+  const { initParsers } = await import('../core/parser.js');
+  await initParsers();
+
+  // Clear existing data
+  clearDatabase();
+
+  // Find all source files
+  const patterns = [
+    '**/*.ts',
+    '**/*.tsx',
+    '**/*.js',
+    '**/*.jsx',
+    '**/*.py',
+  ];
+
+  const files = await fg(patterns, {
+    cwd: projectPath,
+    ignore: config.watchIgnorePatterns,
+    absolute: true,
+  });
+
+  console.error(`Found ${files.length} files to index`);
+
+  let totalNodes = 0;
+  let totalEdges = 0;
+  const allFileNodes: { filePath: string; nodes: Omit<ArbokNode, 'updated_at'>[] }[] = [];
+
+  // First pass: extract all nodes
+  for (const filePath of files) {
+    try {
+      const ext = path.extname(filePath);
+      if (!isSupportedExtension(ext)) continue;
+
+      const content = readFileSync(filePath, 'utf-8');
+      const tree = parseFile(content, ext);
+
+      if (!tree) {
+        console.error(`Failed to parse: ${filePath}`);
+        continue;
+      }
+
+      const relativePath = path.relative(projectPath, filePath);
+      const nodes = extractNodes(tree, relativePath, content);
+
+      if (nodes.length > 0) {
+        insertNodes(nodes);
+        allFileNodes.push({ filePath: relativePath, nodes });
+        totalNodes += nodes.length;
+      }
+    } catch (error) {
+      console.error(`Error processing ${filePath}:`, error);
+    }
+  }
+
+  // Second pass: resolve edges (after all nodes are in the database)
+  for (const fileData of allFileNodes) {
+    try {
+      const fullPath = path.join(projectPath, fileData.filePath);
+      const content = readFileSync(fullPath, 'utf-8');
+      const ext = path.extname(fullPath);
+      const tree = parseFile(content, ext);
+
+      if (tree) {
+        const edges = resolveEdges(tree, fileData.filePath, content, fileData.nodes);
+        if (edges.length > 0) {
+          insertEdges(edges);
+          totalEdges += edges.length;
+        }
+      }
+    } catch (error) {
+      console.error(`Error resolving edges for ${fileData.filePath}:`, error);
+    }
+  }
+
+  // Start the file watcher
+  startWatcher(projectPath);
+
+  // Auto-setup .clinerules if not present
+  const clineruleDir = path.join(projectPath, '.clinerules');
+  if (!existsSync(clineruleDir)) {
+    arbokSetupRules({ projectPath });
+    console.error('.clinerules auto-generated');
+  }
+
+  // Auto-generate Memory Bank
+  arbokUpdateMemory({ memoryBankPath: config.memoryBankPath });
+  console.error('Memory Bank auto-generated');
+
+  const stats = getCounts();
+
+  return JSON.stringify({
+    success: true,
+    message: 'Project indexed successfully',
+    stats: {
+      files_indexed: stats.files,
+      nodes_created: stats.nodes,
+      edges_created: stats.edges,
+    },
+  }, null, 2);
 }
 
 /**
@@ -514,6 +421,24 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
     symbol_name: symbolName,
     dependencies,
   }, null, 2);
+}
+
+/**
+ * Initialize Memory Bank files only if they do not exist.
+ * If the memory-bank directory already exists, skip creation and return a message.
+ */
+export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
+  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+
+  if (existsSync(memoryBankPath)) {
+    return JSON.stringify({
+      success: true,
+      message: 'Memory Bank already exists. Use arbok_update_memory_bank to update.',
+      skipped: true,
+    }, null, 2);
+  }
+
+  return arbokUpdateMemory({ memoryBankPath });
 }
 
 /**
