@@ -59,6 +59,7 @@ export const ArbokGetDependenciesSchema = z.object({
 });
 
 export const ArbokUpdateMemorySchema = z.object({
+  projectPath: z.string().optional(),
   memoryBankPath: z.string().optional(),
   execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
@@ -483,63 +484,69 @@ function detectMemoryBankState(memoryBankPath: string): { state: 'missing' | 'pa
  * - Act Mode (`execute: true`): creates / repairs the Memory Bank.
  */
 export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath);
-  const { state, missingFiles } = detectMemoryBankState(memoryBankPath);
+  // Step 1: Resolve absolute path
+  const basePath = args.projectPath || process.cwd();
+  const memoryBankDir = args.memoryBankPath || 'memory-bank';
+  const absolutePath = path.resolve(basePath, memoryBankDir);
 
-  // ── Plan Mode (dry run) ──────────────────────────────────────────────
-  if (!args.execute) {
-    switch (state) {
-      case 'missing':
-        return JSON.stringify({
-          success: false,
-          state,
-          message: `Directory NOT found at ${memoryBankPath}. Please SWITCH TO ACT MODE to create it.`,
-          nextStep: 'Please SWITCH TO ACT MODE and run this tool again to CREATE the Memory Bank.',
-          memoryBankPath,
-        }, null, 2);
+  // Step 2: Check existence
+  const exists = existsSync(absolutePath);
 
-      case 'partial':
-        return JSON.stringify({
-          success: false,
-          state,
-          message: `Directory exists at ${memoryBankPath} but is empty/incomplete. Please SWITCH TO ACT MODE to repair.`,
-          missingFiles,
-          nextStep: 'Please SWITCH TO ACT MODE and run this tool again to REPAIR/GENERATE missing files.',
-          memoryBankPath,
-        }, null, 2);
-
-      case 'complete':
-        return JSON.stringify({
-          success: true,
-          state,
-          message: `Memory Bank already exists at ${memoryBankPath}. Use update tool.`,
-          nextStep: 'To update the content, SWITCH TO ACT MODE and run `arbok:update_memory_bank`.',
-          memoryBankPath,
-        }, null, 2);
+  // Step 3: Logic flow
+  if (!exists) {
+    if (!args.execute) {
+      return JSON.stringify({
+        success: true,
+        status: 'missing',
+        debug_checked_path: absolutePath,
+        message: `Directory NOT found at ${absolutePath}. Please SWITCH TO ACT MODE to create it.`,
+      }, null, 2);
     }
+
+    // Act Mode: create and initialize
+    return arbokUpdateMemory({ projectPath: args.projectPath, memoryBankPath: absolutePath, execute: true });
   }
 
-  // ── Act Mode (execute) ───────────────────────────────────────────────
-  if (state === 'complete') {
-    return JSON.stringify({
-      success: true,
-      state,
-      message: `Memory Bank already exists at ${memoryBankPath}. Use update tool.`,
-      nextStep: 'To update the content, run `arbok:update_memory_bank`.',
-      memoryBankPath,
-    }, null, 2);
+  // Directory exists – check completeness
+  const missingFiles = MEMORY_BANK_REQUIRED_FILES.filter(
+    (file) => !existsSync(path.join(absolutePath, file))
+  );
+
+  if (missingFiles.length > 0) {
+    if (!args.execute) {
+      return JSON.stringify({
+        success: true,
+        status: 'incomplete',
+        debug_checked_path: absolutePath,
+        message: `Directory exists but files are missing. Please SWITCH TO ACT MODE to repair.`,
+        missingFiles,
+      }, null, 2);
+    }
+
+    // Act Mode: repair missing files
+    return arbokUpdateMemory({ projectPath: args.projectPath, memoryBankPath: absolutePath, execute: true });
   }
 
-  return arbokUpdateMemory({ memoryBankPath, execute: true });
+  // Fully complete
+  return JSON.stringify({
+    success: true,
+    status: 'exists',
+    debug_checked_path: absolutePath,
+    message: `Memory Bank fully exists at ${absolutePath}. Use update tool.`,
+  }, null, 2);
 }
 
 /**
  * Resolve the memory bank path to an absolute path.
- * Uses `path.resolve(process.cwd(), ...)` to ensure correct targeting.
+ * Uses `projectPath` if provided, otherwise falls back to `process.cwd()`.
  */
-function resolveMemoryBankPath(memoryBankPath?: string): string {
-  const targetPath = memoryBankPath || config.memoryBankPath;
-  return path.resolve(process.cwd(), targetPath);
+function resolveMemoryBankPath(memoryBankPath?: string, projectPath?: string): string {
+  if (memoryBankPath && path.isAbsolute(memoryBankPath)) {
+    return memoryBankPath;
+  }
+  const basePath = projectPath || process.cwd();
+  const targetPath = memoryBankPath || 'memory-bank';
+  return path.resolve(basePath, targetPath);
 }
 
 /**
@@ -548,7 +555,7 @@ function resolveMemoryBankPath(memoryBankPath?: string): string {
  * If they already exist, they are updated with the current project state (Update phase).
  */
 export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath);
+  const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath, args.projectPath);
   const isUpdate = existsSync(memoryBankPath);
   
   console.error(`Checking at: ${memoryBankPath}`);
