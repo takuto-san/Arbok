@@ -77,17 +77,15 @@ export const ArbokSetupRulesSchema = z.object({
  * - Act Mode (`execute: true`): creates the .clinerules directory and files.
  */
 export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
-  const projectPath = args.projectPath || process.cwd();
-
-  if (!existsSync(projectPath)) {
+  if (!existsSync(args.projectPath)) {
     return JSON.stringify({
       success: false,
       isError: true,
-      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize rules in a non-existent project.`,
+      message: `The provided projectPath does not exist: '${args.projectPath}'. Cannot initialize rules in a non-existent project.`,
     }, null, 2);
   }
 
-  const absolutePath = path.resolve(projectPath, '.clinerules');
+  const absolutePath = path.resolve(args.projectPath, '.clinerules');
 
   console.error(`[Arbok] arbokInitRules called with execute=${args.execute}`);
   console.error(`[Arbok] Target Absolute Path: ${absolutePath}`);
@@ -117,7 +115,7 @@ export function arbokInitRules(args: z.infer<typeof ArbokSetupRulesSchema>): str
 
   // Act Mode: create and initialize
   console.error(`[Arbok] Act Mode: creating .clinerules at ${absolutePath}`);
-  const result = arbokSetupRules({ projectPath, execute: true });
+  const result = arbokSetupRules({ projectPath: args.projectPath, execute: true });
 
   // Post-write verification
   if (!existsSync(absolutePath)) {
@@ -227,17 +225,15 @@ Run this workflow when starting work on this project for the first time or after
  * - Act Mode (`execute: true`): creates the .arbok directory and index.
  */
 export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  const projectPath = args.projectPath || process.cwd();
-
-  if (!existsSync(projectPath)) {
+  if (!existsSync(args.projectPath)) {
     return JSON.stringify({
       success: false,
       isError: true,
-      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize index in a non-existent project.`,
+      message: `The provided projectPath does not exist: '${args.projectPath}'. Cannot initialize index in a non-existent project.`,
     }, null, 2);
   }
 
-  const absolutePath = path.resolve(projectPath, '.arbok');
+  const absolutePath = path.resolve(args.projectPath, '.arbok');
   const dbPath = path.join(absolutePath, 'index.db');
 
   console.error(`[Arbok] arbokInitIndex called with execute=${args.execute}`);
