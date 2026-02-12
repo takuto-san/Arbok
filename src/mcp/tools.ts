@@ -68,6 +68,11 @@ export const ArbokSetupRulesSchema = z.object({
   execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
+export const ArbokUnifiedInitSchema = z.object({
+  projectPath: z.string().min(1, "projectPath must be a non-empty string"),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
+});
+
 /**
  * Initialize .clinerules configuration files only if they do not exist.
  * If .clinerules already exists, skip creation and return a message.
@@ -281,6 +286,145 @@ export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Pro
   console.error(`[Arbok] Verified index DB exists: ${dbPath}`);
 
   return result;
+}
+
+/**
+ * Unified initialization: consolidates index, memory bank, and rules setup.
+ *
+ * Idempotent – only creates what is missing and skips what already exists.
+ *
+ * - Plan Mode (`execute` falsy): performs a discovery scan and reports what
+ *   IS found and what WILL be created.
+ * - Act Mode (`execute: true`): creates missing resources.
+ */
+export async function arbokUnifiedInit(args: z.infer<typeof ArbokUnifiedInitSchema>): Promise<string> {
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize project in a non-existent directory.`,
+    }, null, 2);
+  }
+
+  const absoluteProjectPath = path.resolve(projectPath);
+
+  // --- Step 1: Project Index (.arbok/) ---
+  const arbokDir = path.resolve(absoluteProjectPath, '.arbok');
+  const dbPath = path.join(arbokDir, 'index.db');
+  const indexDbExists = existsSync(dbPath);
+  let indexHasNodes = false;
+  if (indexDbExists) {
+    const stats = getCounts();
+    indexHasNodes = stats.nodes > 0;
+  }
+  const indexNeeded = !indexDbExists || !indexHasNodes;
+
+  // --- Step 2: Memory Bank (memory-bank/) ---
+  const memoryBankDir = path.resolve(absoluteProjectPath, 'memory-bank');
+  const mbState = detectMemoryBankState(memoryBankDir);
+  const mbMissingFiles = mbState.missingFiles;
+  const mbNeeded = mbMissingFiles.length > 0;
+
+  // --- Step 3: Cline Rules (.clinerules/) ---
+  const clineruleDir = path.resolve(absoluteProjectPath, '.clinerules');
+  const rulesExist = existsSync(clineruleDir);
+  const rulesNeeded = !rulesExist;
+
+  // ---- Plan Mode ----
+  if (!args.execute) {
+    return JSON.stringify({
+      success: true,
+      mode: 'plan',
+      message: 'Discovery scan complete. Switch to Act Mode and run with execute: true to proceed.',
+      discovery: {
+        index: indexNeeded ? 'Will be created' : 'Already exists – will be skipped',
+        memoryBank: mbNeeded
+          ? `Will create ${mbMissingFiles.length} missing file(s): ${mbMissingFiles.join(', ')}`
+          : 'Complete – will be skipped',
+        clinerules: rulesNeeded ? 'Will be created' : 'Already exists – will be skipped',
+      },
+      path: absoluteProjectPath,
+    }, null, 2);
+  }
+
+  // ---- Act Mode ----
+  console.error(`[Arbok] arbokUnifiedInit Act Mode for: ${absoluteProjectPath}`);
+
+  let indexStatus = 'Skipped';
+  let indexNodes = 0;
+  let indexFiles = 0;
+
+  // Step 1: Index
+  if (indexNeeded) {
+    console.error(`[Arbok] Creating project index...`);
+    mkdirSync(arbokDir, { recursive: true });
+    await arbokInit({ projectPath: absoluteProjectPath, execute: true });
+    const counts = getCounts();
+    indexNodes = counts.nodes;
+    indexFiles = counts.files;
+    indexStatus = 'Created';
+  } else {
+    const counts = getCounts();
+    indexNodes = counts.nodes;
+    indexFiles = counts.files;
+  }
+
+  // Step 2: Memory Bank – only create missing files
+  let mbCreatedCount = 0;
+  let mbSkippedCount = 0;
+
+  if (mbNeeded) {
+    console.error(`[Arbok] Setting up memory bank (${mbMissingFiles.length} files to create)...`);
+    mkdirSync(memoryBankDir, { recursive: true });
+
+    const generators: Record<string, () => string> = {
+      'productContext.md': () => generateProductContext([], absoluteProjectPath),
+      'activeContext.md': () => generateActiveContext([]),
+      'progress.md': () => generateProgress([], { files: 0, nodes: 0, edges: 0 }),
+      'systemPatterns.md': () => generateSystemPatterns([]),
+      'techContext.md': () => generateTechContext(absoluteProjectPath, []),
+      'project-structure.md': () => generateProjectStructureFromFileTree(absoluteProjectPath),
+    };
+
+    for (const file of MEMORY_BANK_REQUIRED_FILES) {
+      const filePath = path.join(memoryBankDir, file);
+      if (existsSync(filePath)) {
+        mbSkippedCount++;
+      } else {
+        const generator = generators[file];
+        if (generator) {
+          writeFileSync(filePath, generator());
+          mbCreatedCount++;
+        }
+      }
+    }
+  } else {
+    mbSkippedCount = MEMORY_BANK_REQUIRED_FILES.length;
+  }
+
+  // Step 3: Cline Rules
+  let clinerulesStatus = 'Skipped';
+
+  if (rulesNeeded) {
+    console.error(`[Arbok] Creating .clinerules...`);
+    arbokSetupRules({ projectPath: absoluteProjectPath, execute: true });
+    clinerulesStatus = 'Created';
+  }
+
+  const totalFilesWritten = mbCreatedCount + (clinerulesStatus === 'Created' ? 3 : 0);
+
+  return JSON.stringify({
+    success: true,
+    summary: {
+      index: indexStatus,
+      memoryBank: `Created ${mbCreatedCount} file(s) / Skipped ${mbSkippedCount} file(s)`,
+      clinerules: clinerulesStatus,
+    },
+    stats: { nodes: indexNodes, files: indexFiles + totalFilesWritten },
+    path: absoluteProjectPath,
+  }, null, 2);
 }
 
 /**

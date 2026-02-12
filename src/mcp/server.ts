@@ -8,6 +8,7 @@ import { initParsers } from '../core/parser.js';
 import {
   arbokInit,
   arbokInitIndex,
+  arbokUnifiedInit,
   arbokGetFileStructure,
   arbokSearchSymbol,
   arbokGetDependencies,
@@ -16,6 +17,7 @@ import {
   arbokSetupRules,
   arbokInitRules,
   ArbokInitSchema,
+  ArbokUnifiedInitSchema,
   ArbokGetFileStructureSchema,
   ArbokSearchSymbolSchema,
   ArbokGetDependenciesSchema,
@@ -59,6 +61,22 @@ export async function createMCPServer(): Promise<Server> {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
+        // unified init tool
+        {
+          name: 'arbok:init',
+          description: 'Unified project initialization. Sets up the project index (.arbok/), Memory Bank (memory-bank/), and Cline rules (.clinerules/) in one go. Smart and idempotent: only creates what is missing, skips what already exists.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Absolute path to the project directory. REQUIRED.',
+              },
+              ...EXECUTE_PROPERTY,
+            },
+            required: ['projectPath'],
+          },
+        },
         // init tools
         {
           name: 'arbok:init_index',
@@ -222,6 +240,13 @@ export async function createMCPServer(): Promise<Server> {
       let result: string;
 
       switch (name) {
+        // unified init
+        case 'arbok:init': {
+          const validatedArgs = ArbokUnifiedInitSchema.parse(args || {});
+          result = await arbokUnifiedInit(validatedArgs);
+          break;
+        }
+
         // init tools
         case 'arbok:init_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
