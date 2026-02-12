@@ -269,8 +269,9 @@ export async function arbokInitIndex(args: z.infer<typeof ArbokInitSchema>): Pro
     }, null, 2);
   }
 
-  // Act Mode: create and initialize
+  // Act Mode: create and initialize — strictly .arbok/ only, never .clinerules/
   console.error(`[Arbok] Act Mode: creating index at ${absolutePath}`);
+  mkdirSync(absolutePath, { recursive: true });
   const result = await arbokInit(args);
 
   // Post-write verification
@@ -400,9 +401,10 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
 
   const stats = getCounts();
 
+  const arbokDir = path.resolve(projectPath, '.arbok');
   return JSON.stringify({
     success: true,
-    message: 'Project indexed successfully',
+    message: `Project indexed successfully at ${arbokDir}`,
     stats: {
       files_indexed: stats.files,
       nodes_created: stats.nodes,
