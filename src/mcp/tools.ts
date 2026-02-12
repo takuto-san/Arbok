@@ -314,7 +314,7 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
   }
 
   // Auto-generate Memory Bank
-  arbokUpdateMemory({ memoryBankPath: config.memoryBankPath });
+  arbokUpdateMemory({ memoryBankPath: config.memoryBankPath, execute: true });
   console.error('Memory Bank auto-generated');
 
   const stats = getCounts();
@@ -489,8 +489,12 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
   const memoryBankDir = args.memoryBankPath || 'memory-bank';
   const absolutePath = path.resolve(basePath, memoryBankDir);
 
+  console.error(`[Arbok] arbokInitMemoryBank called with execute=${args.execute}`);
+  console.error(`[Arbok] Resolved memory bank path: ${absolutePath}`);
+
   // Step 2: Check existence
   const exists = existsSync(absolutePath);
+  console.error(`[Arbok] Directory exists: ${exists}`);
 
   // Step 3: Logic flow
   if (!exists) {
@@ -504,6 +508,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
     }
 
     // Act Mode: create and initialize
+    console.error(`[Arbok] Act Mode: creating and initializing memory bank at ${absolutePath}`);
     return arbokUpdateMemory({ projectPath: args.projectPath, memoryBankPath: absolutePath, execute: true });
   }
 
@@ -524,6 +529,7 @@ export function arbokInitMemoryBank(args: z.infer<typeof ArbokUpdateMemorySchema
     }
 
     // Act Mode: repair missing files
+    console.error(`[Arbok] Act Mode: repairing ${missingFiles.length} missing files at ${absolutePath}`);
     return arbokUpdateMemory({ projectPath: args.projectPath, memoryBankPath: absolutePath, execute: true });
   }
 
@@ -558,10 +564,26 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
   const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath, args.projectPath);
   const isUpdate = existsSync(memoryBankPath);
   
-  console.error(`Checking at: ${memoryBankPath}`);
+  console.error(`[Arbok] arbokUpdateMemory called with execute=${args.execute}`);
+  console.error(`[Arbok] Checking at: ${memoryBankPath}`);
+
+  if (!args.execute) {
+    console.error(`[Arbok] Dry run mode – skipping file writes`);
+    return JSON.stringify({
+      success: true,
+      message: `Dry run: would ${isUpdate ? 'update' : 'initialize'} Memory Bank at ${memoryBankPath}. Set execute=true to proceed.`,
+      memoryBankPath,
+    }, null, 2);
+  }
 
   // Ensure memory bank directory exists
+  console.error(`[Arbok] Creating directory at: ${memoryBankPath}`);
   mkdirSync(memoryBankPath, { recursive: true });
+
+  if (!existsSync(memoryBankPath)) {
+    throw new Error(`[CRITICAL FAILURE] Failed to create directory at: ${memoryBankPath}`);
+  }
+  console.error(`[Arbok] Directory verified at: ${memoryBankPath}`);
 
   const allNodes = getAllNodes();
   const stats = getCounts();
@@ -569,58 +591,59 @@ export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>)
 
   const filesCreated: string[] = [];
 
+  // Helper: write a file and immediately verify it exists
+  const writeAndVerify = (absoluteFilePath: string, content: string): void => {
+    console.error(`[Arbok] Writing file: ${absoluteFilePath}`);
+    writeFileSync(absoluteFilePath, content);
+
+    // IMMEDIATE VERIFICATION
+    if (!existsSync(absoluteFilePath)) {
+      throw new Error(`[CRITICAL FAILURE] File system reported success, but file does not exist at: ${absoluteFilePath}`);
+    }
+    console.error(`[Arbok] Verified file exists: ${absoluteFilePath}`);
+    filesCreated.push(absoluteFilePath);
+  };
+
   // 1. Generate productContext.md
   const productContext = generateProductContext(allNodes, projectPath);
   const productContextPath = path.join(memoryBankPath, 'productContext.md');
-  writeFileSync(productContextPath, productContext);
-  filesCreated.push(productContextPath);
+  writeAndVerify(productContextPath, productContext);
 
   // 2. Generate activeContext.md
   const activeContext = generateActiveContext(allNodes);
   const activeContextPath = path.join(memoryBankPath, 'activeContext.md');
-  writeFileSync(activeContextPath, activeContext);
-  filesCreated.push(activeContextPath);
+  writeAndVerify(activeContextPath, activeContext);
 
   // 3. Generate progress.md
   const progress = generateProgress(allNodes, stats);
   const progressPath = path.join(memoryBankPath, 'progress.md');
-  writeFileSync(progressPath, progress);
-  filesCreated.push(progressPath);
+  writeAndVerify(progressPath, progress);
 
   // 4. Generate systemPatterns.md
   const systemPatterns = generateSystemPatterns(allNodes);
   const systemPatternsPath = path.join(memoryBankPath, 'systemPatterns.md');
-  writeFileSync(systemPatternsPath, systemPatterns);
-  filesCreated.push(systemPatternsPath);
+  writeAndVerify(systemPatternsPath, systemPatterns);
 
   // 5. Generate techContext.md
   const techContext = generateTechContext(projectPath, allNodes);
   const techContextPath = path.join(memoryBankPath, 'techContext.md');
-  writeFileSync(techContextPath, techContext);
-  filesCreated.push(techContextPath);
+  writeAndVerify(techContextPath, techContext);
 
   // 6. Generate project-structure.md
   const projectStructure = generateProjectStructure(allNodes);
   const projectStructurePath = path.join(memoryBankPath, 'project-structure.md');
-  writeFileSync(projectStructurePath, projectStructure);
-  filesCreated.push(projectStructurePath);
+  writeAndVerify(projectStructurePath, projectStructure);
 
-  // Verify files were actually written
-  const verifiedFiles = filesCreated.filter(f => existsSync(f));
-  const allVerified = verifiedFiles.length === filesCreated.length;
-  const failedFiles = allVerified ? [] : filesCreated.filter(f => !existsSync(f));
+  console.error(`[Arbok] All ${filesCreated.length} files written and verified successfully`);
 
   return JSON.stringify({
-    success: allVerified,
-    message: allVerified
-      ? (isUpdate
-          ? `Memory Bank updated successfully at ${memoryBankPath}`
-          : `Memory Bank initialized successfully at ${memoryBankPath}`)
-      : `Memory Bank write verification failed at ${memoryBankPath}. ${failedFiles.length} file(s) not written.`,
+    success: true,
+    message: isUpdate
+      ? `Memory Bank updated successfully at ${memoryBankPath}`
+      : `Memory Bank initialized successfully at ${memoryBankPath}`,
     memoryBankPath,
     files: filesCreated,
-    verified: allVerified,
-    ...(failedFiles.length > 0 ? { failedFiles } : {}),
+    verified: true,
     stats: {
       files: stats.files,
       nodes: stats.nodes,
