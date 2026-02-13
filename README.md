@@ -23,12 +23,16 @@ Cline is powerful but expensive — it reads entire source files to understand y
 ## Quick Start with Cline
 
 1. Add Arbok as an MCP server in Cline settings
-2. In Cline chat, say: "init arbok"  
-3. Arbok will:
+2. In Cline chat, use: `arbok:init` with your project path
+3. Arbok will (Plan Mode first, then Act Mode):
    - Scan your project and create an AST index (.arbok/index.db)
    - Generate Memory Bank files (memory-bank/)
    - Create .clinerules for optimal Cline integration
 4. Start coding with dramatically reduced token consumption!
+
+## Requirements
+
+- Node.js >= 22.0.0
 
 ## Installation
 
@@ -60,35 +64,19 @@ docker-compose up
 
 ## MCP Tools
 
-### Init Tools（初回セットアップ用）
+### Init Tool（統合初期化ツール）
 
-#### `arbok:init_index`
+#### `arbok:init`
 
-Initialize the project index only if it does not already exist. If the index already exists, this tool does nothing and returns a message.
+Unified project initialization. Sets up the project index (`.arbok/`), Memory Bank (`memory-bank/`), and Cline rules (`.clinerules/`) in one go. Smart and idempotent: only creates what is missing, skips what already exists.
 
-```json
-{
-  "projectPath": "/workspace"  // optional
-}
-```
-
-#### `arbok:init_memory_bank`
-
-Initialize Memory Bank files only if the memory-bank directory does not already exist. If it already exists, this tool does nothing and returns a message.
+**Plan Mode** (default): Performs a discovery scan and reports what will be created.  
+**Act Mode** (`execute: true`): Creates missing resources.
 
 ```json
 {
-  "memoryBankPath": "memory-bank"  // optional
-}
-```
-
-#### `arbok:init_rules`
-
-Initialize .clinerules configuration files only if the .clinerules directory does not already exist. If it already exists, this tool does nothing and returns a message.
-
-```json
-{
-  "projectPath": "/workspace"  // optional
+  "projectPath": "/workspace",  // required - absolute path to the project
+  "execute": true               // optional - set to true in Act Mode
 }
 ```
 
@@ -100,7 +88,7 @@ Get the structure of a specific file. Returns symbols (functions, classes, etc.)
 
 ```json
 {
-  "filePath": "src/index.ts"  // required
+  "filePath": "src/index.ts"  // required - relative path from project root
 }
 ```
 
@@ -130,11 +118,15 @@ Get dependency relationships for a file or symbol. Returns imports, calls, exten
 
 #### `arbok:update_index`
 
-Initialize or re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges, and starts file watcher. If the index already exists, it is refreshed.
+Re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges. If the index already exists, it is refreshed.
+
+**Plan Mode** (default): Dry run / preview.  
+**Act Mode** (`execute: true`): Performs actual re-indexing.
 
 ```json
 {
-  "projectPath": "/workspace"  // optional
+  "projectPath": "/workspace",  // required - absolute path to the project
+  "execute": true               // optional - set to true in Act Mode
 }
 ```
 
@@ -142,9 +134,14 @@ Initialize or re-index the project. Scans all source files, parses them with Tre
 
 Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.
 
+**Plan Mode** (default): Dry run / preview.  
+**Act Mode** (`execute: true`): Performs actual update.
+
 ```json
 {
-  "memoryBankPath": "memory-bank"  // optional
+  "projectPath": "/workspace",      // required - absolute path to the project
+  "memoryBankPath": "memory-bank",  // optional - defaults to memory-bank/
+  "execute": true                   // optional - set to true in Act Mode
 }
 ```
 
@@ -160,16 +157,19 @@ Generates 6 Cline-compliant Memory Bank files:
 
 Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.
 
+**Plan Mode** (default): Dry run / preview.  
+**Act Mode** (`execute: true`): Performs actual update.
+
 ```json
 {
-  "projectPath": "/workspace"  // optional
+  "projectPath": "/workspace",  // required - absolute path to the project
+  "execute": true               // optional - set to true in Act Mode
 }
 ```
 
 Creates:
 - `.clinerules/rules.md` — Base rules for efficient file access
 - `.clinerules/workflows/update_memory.md` — Memory Bank update workflow
-- `.clinerules/workflows/init_arbok.md` — Initialization workflow
 
 ## Configuration
 
@@ -195,9 +195,14 @@ The server uses SQLite to store indexed symbols and relationships. The database 
 
 ## Supported Languages
 
+**Fully Supported (with AST parsing):**
 - TypeScript (`.ts`, `.tsx`)
 - JavaScript (`.js`, `.jsx`)
 - Python (`.py`)
+
+**Scan Only (parser not yet implemented):**
+- Go (`.go`)
+- Rust (`.rs`)
 
 ## License
 

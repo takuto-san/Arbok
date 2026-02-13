@@ -135,20 +135,6 @@ Run this workflow after completing any task that modifies the codebase.
 `;
   writeFileSync(path.join(workflowsDir, 'update_memory.md'), updateMemoryWorkflow);
 
-  // 3. Create init workflow  
-  const initWorkflow = `# Initialize Arbok Workflow
-
-## Trigger
-Run this workflow when starting work on this project for the first time or after major structural changes.
-
-## Steps
-1. Call \`arbok:update_index\` tool to scan and index the entire project
-2. Call \`arbok:update_memory_bank\` to generate Memory Bank documentation
-3. Read \`memory-bank/productContext.md\` to understand the project
-4. Read \`memory-bank/activeContext.md\` for current work context
-`;
-  writeFileSync(path.join(workflowsDir, 'init_arbok.md'), initWorkflow);
-
   return JSON.stringify({
     success: true,
     message: isUpdate
@@ -157,7 +143,6 @@ Run this workflow when starting work on this project for the first time or after
     files_created: [
       path.join(clineruleDir, 'rules.md'),
       path.join(workflowsDir, 'update_memory.md'),
-      path.join(workflowsDir, 'init_arbok.md'),
     ],
   }, null, 2);
 }
