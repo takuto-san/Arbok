@@ -23,9 +23,14 @@ const MEMORY_BANK_UPDATE_DEBOUNCE_MS = 30000; // 30 seconds
 /**
  * Start watching the project directory for changes
  */
-export function startWatcher(projectPath: string = config.projectPath): void {
+export function startWatcher(projectPath: string): void {
   if (watcher) {
     console.error('Watcher already running');
+    return;
+  }
+
+  if (!projectPath) {
+    console.error('[Arbok Watcher] Cannot start: no projectPath provided');
     return;
   }
 

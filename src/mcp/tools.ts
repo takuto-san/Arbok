@@ -2,7 +2,7 @@ import { z } from 'zod';
 import fg from 'fast-glob';
 import path from 'path';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs';
-import { config } from '../config.js';
+import { config, updateProjectPath } from '../config.js';
 import { parseFile, isSupportedExtension } from '../core/parser.js';
 import { extractNodes } from '../core/node-extractor.js';
 import { resolveEdges } from '../core/edge-resolver.js';
@@ -16,6 +16,7 @@ import {
   getCounts,
   clearDatabase,
 } from '../database/queries.js';
+import { ensureDatabaseAt } from '../database/connection.js';
 import { startWatcher } from '../watcher/watcher.js';
 import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 
@@ -36,6 +37,23 @@ const SCAN_IGNORE_PATTERNS: string[] = [
   '**/.git/**',
   '**/dist/**',
 ];
+
+/**
+ * Synchronise the global config and database connection with the
+ * user-provided project path.  This MUST be called before any
+ * database access in tools that accept a `projectPath` argument.
+ */
+function syncProjectConfig(projectPath: string): void {
+  const resolved = path.resolve(projectPath);
+  const targetDbPath = path.join(resolved, '.arbok', 'index.db');
+
+  // Close stale DB connection BEFORE updating config paths,
+  // so ensureDatabaseAt can compare against the old currentDbPath.
+  ensureDatabaseAt(targetDbPath);
+
+  // Now update config paths for subsequent getDatabase() calls
+  updateProjectPath(resolved);
+}
 
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
@@ -169,6 +187,9 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
 
   const absoluteProjectPath = path.resolve(projectPath);
 
+  // Sync config & DB connection with the provided project path
+  syncProjectConfig(absoluteProjectPath);
+
   // --- Step 1: Project Index (.arbok/) ---
   const arbokDir = path.resolve(absoluteProjectPath, '.arbok');
   const dbPath = path.join(arbokDir, 'index.db');
@@ -179,6 +200,9 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
     indexHasNodes = stats.nodes > 0;
   }
   const indexNeeded = !indexDbExists || !indexHasNodes;
+
+  console.error(`[Arbok] Discovery: arbokDir=${arbokDir}, dbPath=${dbPath}`);
+  console.error(`[Arbok] Discovery: indexDbExists=${indexDbExists}, indexHasNodes=${indexHasNodes}, indexNeeded=${indexNeeded}`);
 
   // --- Step 2: Memory Bank (memory-bank/) ---
   const memoryBankDir = path.resolve(absoluteProjectPath, 'memory-bank');
@@ -221,9 +245,12 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
     mkdirSync(arbokDir, { recursive: true });
     await arbokReindex({ projectPath: absoluteProjectPath, execute: true });
 
-    // POST-WRITE CHECK: Verify .arbok directory exists on disk
+    // POST-WRITE CHECK: Verify .arbok directory AND index.db exist on disk
     if (!existsSync(arbokDir)) {
       throw new Error(`[CRITICAL FAILURE] Index reported success but .arbok directory does not exist at: ${arbokDir}`);
+    }
+    if (!existsSync(dbPath)) {
+      throw new Error(`[CRITICAL FAILURE] Index reported success but index.db does not exist at: ${dbPath}`);
     }
 
     const counts = getCounts();
@@ -347,6 +374,15 @@ export async function arbokReindex(args: z.infer<typeof ArbokInitSchema>): Promi
   
   console.error(`Initializing Arbok for project: ${projectPath}`);
 
+  // Sync config & DB connection with the provided project path
+  syncProjectConfig(projectPath);
+
+  // Ensure .arbok directory exists before any DB operations
+  const arbokDir = path.resolve(projectPath, '.arbok');
+  mkdirSync(arbokDir, { recursive: true });
+  console.error(`[Arbok] Ensured .arbok directory at: ${arbokDir}`);
+  console.error(`[Arbok] config.dbPath is now: ${config.dbPath}`);
+
   // Ensure parsers are initialized
   const { initParsers } = await import('../core/parser.js');
   await initParsers();
@@ -415,7 +451,6 @@ export async function arbokReindex(args: z.infer<typeof ArbokInitSchema>): Promi
 
   const stats = getCounts();
 
-  const arbokDir = path.resolve(projectPath, '.arbok');
   return JSON.stringify({
     success: true,
     message: `Project indexed successfully at ${arbokDir}`,

@@ -6,7 +6,6 @@
  * by providing lightweight code structure queries.
  */
 
-import 'dotenv/config';
 import { startMCPServer } from './mcp/server.js';
 
 async function main() {

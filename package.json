@@ -8,7 +8,7 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit", 
+    "typecheck": "tsc --noEmit",
     "build:wasm": "npm run build:wasm:ts && npm run build:wasm:py",
     "build:wasm:ts": "tree-sitter build --wasm node_modules/tree-sitter-typescript/typescript -o resources/tree-sitter-typescript.wasm",
     "build:wasm:py": "tree-sitter build --wasm node_modules/tree-sitter-python -o resources/tree-sitter-python.wasm"
@@ -17,14 +17,13 @@
     "@modelcontextprotocol/sdk": "^1.12.0",
     "better-sqlite3": "^11.9.1",
     "chokidar": "^4.0.3",
-    "dotenv": "^17.2.4",
     "fast-glob": "^3.3.3",
     "uuid": "^13.0.0",
     "web-tree-sitter": "^0.24.7",
     "zod": "^3.25.3"
   },
   "devDependencies": {
-    "@modelcontextprotocol/inspector": "^0.3.0", 
+    "@modelcontextprotocol/inspector": "^0.3.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.21",
     "@types/uuid": "^10.0.0",
