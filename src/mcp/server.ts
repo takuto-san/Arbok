@@ -189,6 +189,10 @@ export async function createMCPServer(): Promise<Server> {
         // unified init
         case 'arbok:init': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = await arbokInit(validatedArgs);
           break;
         }

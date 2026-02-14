@@ -114,23 +114,35 @@ export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): st
   mkdirSync(workflowsDir, { recursive: true });
 
   // 1. Create base rules file
-  const baseRules = `# Arbok Integration Rules
+  const baseRules = `# Arbok Autonomous Rules
 
-## File Access Rules
-When you need to understand a file's structure, ALWAYS use the \`arbok:get_file_structure\` tool first before reading the entire file.
-Only read the full file content when you need to modify specific lines or understand detailed implementation logic.
+## Core Directive
+You are an advanced AI agent acting as a Lead Engineer. Your responsibility is twofold: **Quality Coding** and **Perfect Documentation Sync**.
+The Arbok MCP is your primary interface for maintaining this synchronization.
 
-## Symbol Search Rules  
-When looking for a function, class, or variable definition, use \`arbok:get_symbols\` instead of scanning multiple files.
+## CRITICAL: Definition of Done
+A task is **NOT COMPLETE** until:
+1. The code changes are implemented and verified.
+2. **You have executed \`arbok:update_memory_bank\` to sync the documentation.**
+3. You have confirmed the update was successful.
 
-## Dependency Analysis Rules
-When you need to understand how components are connected, use \`arbok:get_dependencies\` to get the dependency graph.
+**Do NOT report "Task Completed" without performing Step 2.**
 
-## General Guidelines
-- Minimize the number of files you read in full
-- Use Arbok's index to navigate the codebase efficiently
-- Always check memory-bank/ files first for project context before exploring code
-- After completing a task, trigger the memory bank update workflow
+## Mandatory Workflows
+
+### 1. Pre-Task Analysis
+- **Constraint:** Do NOT blindly read files using \`read_file\`.
+- **Action:** ALWAYS use \`arbok:get_file_structure\` and \`arbok:get_symbols\` first to build a mental map.
+- **Context:** Check \`memory-bank/activeContext.md\` BEFORE starting any implementation.
+
+### 2. Post-Coding Sync (The "Arbok Loop")
+- **Trigger:** Immediately after you finish writing or modifying code.
+- **Action:** Run the \`arbok:update_memory_bank\` tool.
+- **Reasoning:** The Memory Bank is the source of truth. Code without updated documentation is technical debt.
+
+## Tool Usage Constraints
+- **File Access:** Only read the full content of a file if you intend to edit it or need deep logic verification. Use the index for everything else.
+- **Symbol Search:** Use \`arbok:get_symbols\` instead of \`grep\` or searching strings.
 `;
   writeFileSync(path.join(clineruleDir, 'rules.md'), baseRules);
 
@@ -211,9 +223,9 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
   const mbNeeded = mbMissingFiles.length > 0;
 
   // --- Step 3: Cline Rules (.clinerules/) ---
+  // Always overwrite rules.md to enforce the latest strict compliance content.
   const clineruleDir = path.resolve(absoluteProjectPath, '.clinerules');
-  const rulesExist = existsSync(clineruleDir);
-  const rulesNeeded = !rulesExist;
+  const rulesNeeded = true;
 
   // ---- Plan Mode ----
   if (!args.execute) {
@@ -226,7 +238,7 @@ export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<
         memoryBank: mbNeeded
           ? `Will create ${mbMissingFiles.length} missing file(s): ${mbMissingFiles.join(', ')}`
           : 'Complete – will be skipped',
-        clinerules: rulesNeeded ? 'Will be created' : 'Already exists – will be skipped',
+        clinerules: rulesNeeded ? 'Will be created / overwritten' : 'Already exists – will be skipped',
       },
       path: absoluteProjectPath,
     }, null, 2);
