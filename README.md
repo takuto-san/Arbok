@@ -30,6 +30,32 @@ Cline is powerful but expensive — it reads entire source files to understand y
    - Create .clinerules for optimal Cline integration
 4. Start coding with dramatically reduced token consumption!
 
+## Automated Workflow & Best Practices
+
+### Zero-Touch Documentation
+
+You **do not need to manually run** `arbok:update_memory_bank` or `arbok:update_index` during normal development. Arbok is designed to work with **Cline Rules (`.clinerules`)**, which automate the entire update cycle for you.
+
+### How It Works
+
+When `.clinerules` are in place, the update flow is fully automatic:
+
+1. **You** give a coding task to Cline.
+2. **Cline** modifies the code to complete the task.
+3. **Cline** (triggered by `.clinerules`) **automatically runs** `arbok:update_index` and `arbok:update_memory_bank` to sync the index and documentation with the latest code state.
+
+```mermaid
+flowchart LR
+    A["1. User gives task"] --> B["2. Cline modifies code"]
+    B --> C["3. .clinerules triggers auto-update"]
+    C --> D["4. Index & Memory Bank synced"]
+    D --> A
+```
+
+### When to Run Manually
+
+You only need to run `arbok:update_index` or `arbok:update_memory_bank` manually if you have made changes to the codebase **outside of Cline** (e.g., manual edits in VS Code, `git pull`, branch switching, etc.).
+
 ## Requirements
 
 - Node.js >= 22.0.0
