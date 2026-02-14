@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import fg from 'fast-glob';
 import path from 'path';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { config } from '../config.js';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs';
+import { config, updateProjectPath } from '../config.js';
 import { parseFile, isSupportedExtension } from '../core/parser.js';
 import { extractNodes } from '../core/node-extractor.js';
 import { resolveEdges } from '../core/edge-resolver.js';
@@ -11,19 +11,54 @@ import {
   insertEdges,
   getNodesByFile,
   searchNodes,
-  getAllNodes,
   getNodeById,
   getEdgesBySource,
   getCounts,
   clearDatabase,
 } from '../database/queries.js';
+import { ensureDatabaseAt } from '../database/connection.js';
 import { startWatcher } from '../watcher/watcher.js';
 import type { Node as ArbokNode, NodeKind } from '../types/index.js';
 
+/** Glob patterns for source files to scan recursively. */
+const SOURCE_FILE_PATTERNS: string[] = [
+  '**/*.ts',
+  '**/*.tsx',
+  '**/*.js',
+  '**/*.jsx',
+  '**/*.py',
+  '**/*.go',
+  '**/*.rs',
+];
+
+/** Directories to strictly ignore during file scanning. */
+const SCAN_IGNORE_PATTERNS: string[] = [
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/dist/**',
+];
+
+/**
+ * Synchronise the global config and database connection with the
+ * user-provided project path.  This MUST be called before any
+ * database access in tools that accept a `projectPath` argument.
+ */
+function syncProjectConfig(projectPath: string): void {
+  const resolved = path.resolve(projectPath);
+  const targetDbPath = path.join(resolved, '.arbok', 'index.db');
+
+  // Close stale DB connection BEFORE updating config paths,
+  // so ensureDatabaseAt can compare against the old currentDbPath.
+  ensureDatabaseAt(targetDbPath);
+
+  // Now update config paths for subsequent getDatabase() calls
+  updateProjectPath(resolved);
+}
+
 // Input schemas for MCP tools
 export const ArbokInitSchema = z.object({
-  projectPath: z.string().optional(),
-  execute: z.boolean().optional().default(true),
+  projectPath: z.string().min(1, "projectPath must be a non-empty string"),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
 export const ArbokGetFileStructureSchema = z.object({
@@ -41,179 +76,330 @@ export const ArbokGetDependenciesSchema = z.object({
 });
 
 export const ArbokUpdateMemorySchema = z.object({
+  projectPath: z.string().min(1, "projectPath must be a non-empty string"),
   memoryBankPath: z.string().optional(),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
 export const ArbokSetupRulesSchema = z.object({
-  projectPath: z.string().optional(),
+  projectPath: z.string().min(1, "projectPath must be a non-empty string"),
+  execute: z.boolean().optional().describe("Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview)."),
 });
 
+/** Number of files created by arbokSetupRules (.clinerules). */
+const CLINERULES_FILE_COUNT = 3;
+
 /**
- * Unified initialization tool: arbok:init
- * Consolidates index, memory bank, and rules initialization into a single tool.
- * Supports plan mode (execute: false) and act mode (execute: true).
+ * Update .clinerules configuration files.
+ * If .clinerules or related config files do not exist, they are generated from scratch (Setup phase).
+ * If they already exist, they are updated with necessary changes (Update phase).
  */
-export async function arbokInitAll(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  const projectPath = args.projectPath || config.projectPath;
-  const execute = args.execute !== false;
+export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
+  const projectPath = args.projectPath;
 
-  const dotArbokPath = path.resolve(projectPath, '.arbok');
-  const memoryBankPath = path.resolve(projectPath, 'memory-bank');
-  const dotClinerulesPath = path.resolve(projectPath, '.clinerules');
-
-  const memoryBankFiles = [
-    'productContext.md',
-    'activeContext.md',
-    'progress.md',
-    'systemPatterns.md',
-    'techContext.md',
-    'project-structure.md',
-  ];
-
-  // Snapshot pre-existing state
-  const memoryBankExists = existsSync(memoryBankPath);
-  const preExisting = {
-    dotArbok: existsSync(dotArbokPath),
-    memoryBank: memoryBankExists,
-    clinerules: existsSync(dotClinerulesPath),
-    memoryBankFiles: memoryBankFiles.reduce<Record<string, boolean>>((acc, f) => {
-      acc[f] = memoryBankExists && existsSync(path.resolve(memoryBankPath, f));
-      return acc;
-    }, {}),
-  };
-
-  // --- Plan Mode ---
-  if (!execute) {
-    const plan: Record<string, string> = {};
-    plan['.arbok/'] = preExisting.dotArbok ? 'Exists' : 'Will be created';
-    plan['memory-bank/'] = preExisting.memoryBank ? 'Exists' : 'Will be created';
-    for (const f of memoryBankFiles) {
-      plan[`memory-bank/${f}`] = preExisting.memoryBankFiles[f] ? 'Exists' : 'Will be created';
-    }
-    plan['.clinerules/'] = preExisting.clinerules ? 'Exists' : 'Will be created';
-
+  if (!existsSync(projectPath)) {
     return JSON.stringify({
-      success: true,
-      mode: 'plan',
-      message: 'Initialization plan. Call with execute: true to apply.',
-      plan,
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot setup rules in a non-existent project.`,
     }, null, 2);
   }
+  
+  const clineruleDir = path.join(projectPath, '.clinerules');
+  const workflowsDir = path.join(clineruleDir, 'workflows');
+  const isUpdate = existsSync(clineruleDir);
 
-  // --- Act Mode ---
-  const results: Record<string, string> = {};
-  let filesIndexed = 0;
-  let nodesCreated = 0;
-  let filesCreated = 0;
+  // Create .clinerules directory structure if missing
+  mkdirSync(clineruleDir, { recursive: true });
+  mkdirSync(workflowsDir, { recursive: true });
 
-  // Step A: Index
-  if (preExisting.dotArbok) {
-    const stats = getCounts();
-    if (stats.nodes > 0) {
-      results['.arbok/'] = 'Skipped (Already exists)';
-      filesIndexed = stats.files;
-      nodesCreated = stats.nodes;
-    } else {
-      // Directory exists but empty index — re-index
-      const indexResult = await runIndexing(projectPath);
-      results['.arbok/'] = 'Created';
-      filesIndexed = indexResult.filesIndexed;
-      nodesCreated = indexResult.nodesCreated;
-    }
-  } else {
-    const indexResult = await runIndexing(projectPath);
-    // Post-write check
-    if (!existsSync(dotArbokPath)) {
-      throw new Error(`Fatal: .arbok directory was not created at ${dotArbokPath} after indexing.`);
-    }
-    results['.arbok/'] = 'Created';
-    filesIndexed = indexResult.filesIndexed;
-    nodesCreated = indexResult.nodesCreated;
-  }
+  // 1. Create base rules file
+  const baseRules = `# Arbok Integration Rules
 
-  // Step B: Memory Bank
-  if (preExisting.memoryBank) {
-    results['memory-bank/'] = 'Skipped (Already exists)';
-  } else {
-    mkdirSync(memoryBankPath, { recursive: true });
-    results['memory-bank/'] = 'Created';
-  }
+## File Access Rules
+When you need to understand a file's structure, ALWAYS use the \`arbok:get_file_structure\` tool first before reading the entire file.
+Only read the full file content when you need to modify specific lines or understand detailed implementation logic.
 
-  // Create individual memory bank files only if they don't exist
-  const needsMemoryBankFiles = memoryBankFiles.some(f => !preExisting.memoryBankFiles[f]);
-  if (needsMemoryBankFiles) {
-    const allNodes = getAllNodes();
-    const stats = getCounts();
+## Symbol Search Rules  
+When looking for a function, class, or variable definition, use \`arbok:get_symbols\` instead of scanning multiple files.
 
-    for (const f of memoryBankFiles) {
-      const filePath = path.resolve(memoryBankPath, f);
-      if (preExisting.memoryBankFiles[f]) {
-        results[`memory-bank/${f}`] = 'Skipped (Already exists)';
-      } else {
-        const content = generateMemoryBankFile(f, allNodes, stats, projectPath);
-        writeFileSync(filePath, content);
-        results[`memory-bank/${f}`] = 'Created';
-        filesCreated++;
-      }
-    }
-  } else {
-    for (const f of memoryBankFiles) {
-      results[`memory-bank/${f}`] = 'Skipped (Already exists)';
-    }
-  }
+## Dependency Analysis Rules
+When you need to understand how components are connected, use \`arbok:get_dependencies\` to get the dependency graph.
 
-  // Step C: Rules
-  if (preExisting.clinerules) {
-    results['.clinerules/'] = 'Skipped (Already exists)';
-  } else {
-    mkdirSync(dotClinerulesPath, { recursive: true });
-    const rulesResult = JSON.parse(arbokSetupRules({ projectPath }));
-    results['.clinerules/'] = 'Created';
-    filesCreated += (rulesResult.files_created?.length ?? 0);
-  }
+## General Guidelines
+- Minimize the number of files you read in full
+- Use Arbok's index to navigate the codebase efficiently
+- Always check memory-bank/ files first for project context before exploring code
+- After completing a task, trigger the memory bank update workflow
+`;
+  writeFileSync(path.join(clineruleDir, 'rules.md'), baseRules);
 
-  // Start the file watcher
-  startWatcher(projectPath);
+  // 2. Create Memory Bank update workflow
+  const updateMemoryWorkflow = `# Update Memory Bank Workflow
+
+## Trigger
+Run this workflow after completing any task that modifies the codebase.
+
+## Steps
+1. Call \`arbok:update_memory_bank\` tool to regenerate Memory Bank files
+2. Review the generated files in \`memory-bank/\` directory
+3. The following files will be updated:
+   - \`memory-bank/productContext.md\` — Project purpose and user experience goals
+   - \`memory-bank/activeContext.md\` — Current work focus and recent changes
+   - \`memory-bank/progress.md\` — What works, what's left, known issues
+   - \`memory-bank/systemPatterns.md\` — Architecture and design patterns
+   - \`memory-bank/techContext.md\` — Technologies, dependencies, and setup
+   - \`memory-bank/project-structure.md\` — File tree and symbol index
+`;
+  writeFileSync(path.join(workflowsDir, 'update_memory.md'), updateMemoryWorkflow);
 
   return JSON.stringify({
     success: true,
-    mode: 'act',
-    message: 'Initialization complete.',
-    results,
-    stats: {
-      files_indexed: filesIndexed,
-      nodes_created: nodesCreated,
-      files_created: filesCreated,
-    },
+    message: isUpdate
+      ? '.clinerules files updated successfully'
+      : '.clinerules files created successfully',
+    files_created: [
+      path.join(clineruleDir, 'rules.md'),
+      path.join(workflowsDir, 'update_memory.md'),
+    ],
   }, null, 2);
 }
 
 /**
- * Run the indexing pipeline (parse files, extract nodes, resolve edges).
+ * Unified initialization: consolidates index, memory bank, and rules setup.
+ *
+ * Idempotent – only creates what is missing and skips what already exists.
+ *
+ * - Plan Mode (`execute` falsy): performs a discovery scan and reports what
+ *   IS found and what WILL be created.
+ * - Act Mode (`execute: true`): creates missing resources.
  */
-async function runIndexing(projectPath: string): Promise<{ filesIndexed: number; nodesCreated: number }> {
+export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize project in a non-existent directory.`,
+    }, null, 2);
+  }
+
+  const absoluteProjectPath = path.resolve(projectPath);
+
+  // Sync config & DB connection with the provided project path
+  syncProjectConfig(absoluteProjectPath);
+
+  // --- Step 1: Project Index (.arbok/) ---
+  const arbokDir = path.resolve(absoluteProjectPath, '.arbok');
+  const dbPath = path.join(arbokDir, 'index.db');
+  const indexDbExists = existsSync(dbPath);
+  let indexHasNodes = false;
+  if (indexDbExists) {
+    const stats = getCounts();
+    indexHasNodes = stats.nodes > 0;
+  }
+  const indexNeeded = !indexDbExists || !indexHasNodes;
+
+  console.error(`[Arbok] Discovery: arbokDir=${arbokDir}, dbPath=${dbPath}`);
+  console.error(`[Arbok] Discovery: indexDbExists=${indexDbExists}, indexHasNodes=${indexHasNodes}, indexNeeded=${indexNeeded}`);
+
+  // --- Step 2: Memory Bank (memory-bank/) ---
+  const memoryBankDir = path.resolve(absoluteProjectPath, 'memory-bank');
+  const mbState = detectMemoryBankState(memoryBankDir);
+  const mbMissingFiles = mbState.missingFiles;
+  const mbNeeded = mbMissingFiles.length > 0;
+
+  // --- Step 3: Cline Rules (.clinerules/) ---
+  const clineruleDir = path.resolve(absoluteProjectPath, '.clinerules');
+  const rulesExist = existsSync(clineruleDir);
+  const rulesNeeded = !rulesExist;
+
+  // ---- Plan Mode ----
+  if (!args.execute) {
+    return JSON.stringify({
+      success: true,
+      mode: 'plan',
+      message: 'Discovery scan complete. Switch to Act Mode and run with execute: true to proceed.',
+      discovery: {
+        index: indexNeeded ? 'Will be created' : 'Already exists – will be skipped',
+        memoryBank: mbNeeded
+          ? `Will create ${mbMissingFiles.length} missing file(s): ${mbMissingFiles.join(', ')}`
+          : 'Complete – will be skipped',
+        clinerules: rulesNeeded ? 'Will be created' : 'Already exists – will be skipped',
+      },
+      path: absoluteProjectPath,
+    }, null, 2);
+  }
+
+  // ---- Act Mode ----
+  console.error(`[Arbok] arbokInit Act Mode for: ${absoluteProjectPath}`);
+
+  let indexStatus = 'Skipped (Already exists)';
+  let indexNodes = 0;
+  let indexFiles = 0;
+
+  // Step A: Index
+  if (indexNeeded) {
+    console.error(`[Arbok] Creating project index...`);
+    mkdirSync(arbokDir, { recursive: true });
+    await arbokReindex({ projectPath: absoluteProjectPath, execute: true });
+
+    // POST-WRITE CHECK: Verify .arbok directory AND index.db exist on disk
+    if (!existsSync(arbokDir)) {
+      throw new Error(`[CRITICAL FAILURE] Index reported success but .arbok directory does not exist at: ${arbokDir}`);
+    }
+    if (!existsSync(dbPath)) {
+      throw new Error(`[CRITICAL FAILURE] Index reported success but index.db does not exist at: ${dbPath}`);
+    }
+
+    const counts = getCounts();
+    indexNodes = counts.nodes;
+    indexFiles = counts.files;
+    indexStatus = 'Created';
+  } else {
+    const counts = getCounts();
+    indexNodes = counts.nodes;
+    indexFiles = counts.files;
+  }
+
+  // Step B: Memory Bank – only create missing files
+  let mbCreatedCount = 0;
+  let mbSkippedCount = 0;
+
+  if (mbNeeded) {
+    console.error(`[Arbok] Setting up memory bank (${mbMissingFiles.length} files to create)...`);
+    mkdirSync(memoryBankDir, { recursive: true });
+
+    const generators: Record<string, () => string> = {
+      'productContext.md': () => generateProductContext([], absoluteProjectPath),
+      'activeContext.md': () => generateActiveContext([]),
+      'progress.md': () => generateProgress([], { files: 0, nodes: 0, edges: 0 }),
+      'systemPatterns.md': () => generateSystemPatterns([]),
+      'techContext.md': () => generateTechContext(absoluteProjectPath, []),
+      'project-structure.md': () => generateProjectStructureFromFileTree(absoluteProjectPath),
+    };
+
+    for (const file of MEMORY_BANK_REQUIRED_FILES) {
+      const filePath = path.join(memoryBankDir, file);
+      if (existsSync(filePath)) {
+        mbSkippedCount++;
+      } else {
+        const generator = generators[file];
+        if (generator) {
+          writeFileSync(filePath, generator());
+          mbCreatedCount++;
+        }
+      }
+    }
+  } else {
+    mbSkippedCount = MEMORY_BANK_REQUIRED_FILES.length;
+  }
+
+  // Step C: Cline Rules
+  let clinerulesStatus = 'Skipped (Already exists)';
+
+  if (rulesNeeded) {
+    console.error(`[Arbok] Creating .clinerules...`);
+    arbokSetupRules({ projectPath: absoluteProjectPath, execute: true });
+    clinerulesStatus = 'Created';
+  }
+
+  const totalFilesWritten = mbCreatedCount + (clinerulesStatus === 'Created' ? CLINERULES_FILE_COUNT : 0);
+
+  return JSON.stringify({
+    success: true,
+    summary: {
+      index: indexStatus,
+      memoryBank: `Created ${mbCreatedCount} file(s) / Skipped ${mbSkippedCount} file(s)`,
+      clinerules: clinerulesStatus,
+    },
+    stats: {
+      files_indexed: indexFiles,
+      nodes_created: indexNodes,
+      files_created: totalFilesWritten,
+    },
+    path: absoluteProjectPath,
+  }, null, 2);
+}
+
+/**
+ * Recursively scan a project directory for source files using fast-glob.
+ *
+ * Finds all files ending in .py, .ts, .js, .go, and .rs while strictly
+ * ignoring node_modules, .git, and dist directories.
+ *
+ * @param projectPath - The root directory to scan.
+ * @returns An array of absolute file paths.
+ */
+export async function scanSourceFiles(projectPath: string): Promise<string[]> {
+  const ignorePatterns: string[] = [
+    ...SCAN_IGNORE_PATTERNS,
+    ...config.watchIgnorePatterns,
+  ];
+
+  // Deduplicate ignore patterns
+  const uniqueIgnore: string[] = [...new Set(ignorePatterns)];
+
+  try {
+    const files: string[] = await fg(SOURCE_FILE_PATTERNS, {
+      cwd: projectPath,
+      ignore: uniqueIgnore,
+      absolute: true,
+      followSymbolicLinks: false,
+    });
+
+    return files;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error scanning source files in ${projectPath}: ${message}`);
+    return [];
+  }
+}
+
+/**
+ * Re-index the project (scan, parse, extract nodes and edges).
+ * Used internally by arbokInit and by arbok:update_index.
+ */
+export async function arbokReindex(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
+  const projectPath = args.projectPath;
+
+  if (!existsSync(projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${projectPath}'. Cannot initialize project in a non-existent directory.`,
+    }, null, 2);
+  }
+  
+  console.error(`Initializing Arbok for project: ${projectPath}`);
+
+  // Sync config & DB connection with the provided project path
+  syncProjectConfig(projectPath);
+
+  // Ensure .arbok directory exists before any DB operations
+  const arbokDir = path.resolve(projectPath, '.arbok');
+  mkdirSync(arbokDir, { recursive: true });
+  console.error(`[Arbok] Ensured .arbok directory at: ${arbokDir}`);
+  console.error(`[Arbok] config.dbPath is now: ${config.dbPath}`);
+
+  // Ensure parsers are initialized
   const { initParsers } = await import('../core/parser.js');
   await initParsers();
 
+  // Clear existing data
   clearDatabase();
 
-  const patterns = [
-    '**/*.ts',
-    '**/*.tsx',
-    '**/*.js',
-    '**/*.jsx',
-    '**/*.py',
-  ];
+  // Find all source files
+  const files = await scanSourceFiles(projectPath);
 
-  const files = await fg(patterns, {
-    cwd: projectPath,
-    ignore: config.watchIgnorePatterns,
-    absolute: true,
-  });
+  console.error(`Found ${files.length} files to index`);
 
   let totalNodes = 0;
+  let totalEdges = 0;
   const allFileNodes: { filePath: string; nodes: Omit<ArbokNode, 'updated_at'>[] }[] = [];
 
+  // First pass: extract all nodes
   for (const filePath of files) {
     try {
       const ext = path.extname(filePath);
@@ -240,6 +426,7 @@ async function runIndexing(projectPath: string): Promise<{ filesIndexed: number;
     }
   }
 
+  // Second pass: resolve edges (after all nodes are in the database)
   for (const fileData of allFileNodes) {
     try {
       const fullPath = path.join(projectPath, fileData.filePath);
@@ -251,6 +438,7 @@ async function runIndexing(projectPath: string): Promise<{ filesIndexed: number;
         const edges = resolveEdges(tree, fileData.filePath, content, fileData.nodes);
         if (edges.length > 0) {
           insertEdges(edges);
+          totalEdges += edges.length;
         }
       }
     } catch (error) {
@@ -258,145 +446,20 @@ async function runIndexing(projectPath: string): Promise<{ filesIndexed: number;
     }
   }
 
+  // Start the file watcher
+  startWatcher(projectPath);
+
   const stats = getCounts();
-  return { filesIndexed: stats.files, nodesCreated: totalNodes };
-}
-
-/**
- * Generate a specific memory bank file by name.
- */
-function generateMemoryBankFile(
-  fileName: string,
-  allNodes: ArbokNode[],
-  stats: { files: number; nodes: number; edges: number },
-  projectPath: string,
-): string {
-  switch (fileName) {
-    case 'productContext.md':
-      return generateProductContext(allNodes, projectPath);
-    case 'activeContext.md':
-      return generateActiveContext(allNodes);
-    case 'progress.md':
-      return generateProgress(allNodes, stats);
-    case 'systemPatterns.md':
-      return generateSystemPatterns(allNodes);
-    case 'techContext.md':
-      return generateTechContext(projectPath, allNodes);
-    case 'project-structure.md':
-      return generateProjectStructure(allNodes);
-    default:
-      return `# ${fileName}\n\nGenerated by Arbok.\n`;
-  }
-}
-
-/**
- * Update .clinerules configuration files.
- * If .clinerules or related config files do not exist, they are generated from scratch (Setup phase).
- * If they already exist, they are updated with necessary changes (Update phase).
- */
-export function arbokSetupRules(args: z.infer<typeof ArbokSetupRulesSchema>): string {
-  const projectPath = args.projectPath || config.projectPath;
-  
-  const clineruleDir = path.join(projectPath, '.clinerules');
-  const workflowsDir = path.join(clineruleDir, 'workflows');
-  const isUpdate = existsSync(clineruleDir);
-
-  // Create .clinerules directory structure if missing
-  mkdirSync(clineruleDir, { recursive: true });
-  mkdirSync(workflowsDir, { recursive: true });
-
-  // 1. Create base rules file
-  const baseRules = `# Arbok Integration Rules
-
-## Tool Usage & Mode Switching Protocol
-
-### Arbok Tools are Intermediate Steps
-All \`arbok_*\` tools (e.g., \`arbok_get_file_structure\`, \`arbok_get_symbols\`, \`arbok_get_dependencies\`) are specialized for **Context Gathering**, **Analysis**, and **Planning** only. They do not modify code logic or solve user requests on their own.
-
-- When you execute an \`arbok_*\` tool, treat the output as *information to be analyzed*, not as the final result of the task.
-- Successfully running an \`arbok_*\` tool does NOT mean the user's request is complete.
-
-### Mandatory Mode Switch (Plan Mode)
-If you are currently in **Plan Mode** and you have executed an \`arbok_*\` tool to gather context:
-- **DO NOT** attempt to write code or apply fixes immediately within Plan Mode.
-- **DO NOT** return a "Task Completed" success response immediately after the tool output.
-- **INSTEAD**, output a plan based on the tool's findings and ask the user to switch to **Act Mode** to perform the actual implementation.
-
-**Response Template for Plan Mode:**
-> "I have analyzed the project structure/dependencies using \`arbok\`. Based on this, here is the plan: [Brief Plan]. **Please switch to Act Mode so I can proceed with editing the files.**"
-
-### Definition of Completion
-The task is only "complete" when the actual code changes (via \`write_to_file\`, \`replace_in_file\`, etc.) have been verified. Merely running \`arbok_get_*\` is never the completion state for a modification request.
-
-## File Access Rules
-When you need to understand a file's structure, ALWAYS use the \`arbok_get_file_structure\` tool first before reading the entire file.
-Only read the full file content when you need to modify specific lines or understand detailed implementation logic.
-
-## Symbol Search Rules  
-When looking for a function, class, or variable definition, use \`arbok_get_symbols\` instead of scanning multiple files.
-
-## Dependency Analysis Rules
-When you need to understand how components are connected, use \`arbok_get_dependencies\` to get the dependency graph.
-
-## General Guidelines
-- Minimize the number of files you read in full
-- Use Arbok's index to navigate the codebase efficiently
-- Always check memory-bank/ files first for project context before exploring code
-- After completing a task, trigger the memory bank update workflow
-`;
-  writeFileSync(path.join(clineruleDir, 'rules.md'), baseRules);
-
-  // 2. Create Memory Bank update workflow
-  const updateMemoryWorkflow = `# Update Memory Bank Workflow
-
-## Trigger
-Run this workflow after completing any task that modifies the codebase.
-
-## Steps
-1. Call \`arbok_update_memory_bank\` tool to regenerate Memory Bank files
-2. Review the generated files in \`memory-bank/\` directory
-3. The following files will be updated:
-   - \`memory-bank/productContext.md\` — Project purpose and user experience goals
-   - \`memory-bank/activeContext.md\` — Current work focus and recent changes
-   - \`memory-bank/progress.md\` — What works, what's left, known issues
-   - \`memory-bank/systemPatterns.md\` — Architecture and design patterns
-   - \`memory-bank/techContext.md\` — Technologies, dependencies, and setup
-   - \`memory-bank/project-structure.md\` — File tree and symbol index
-`;
-  writeFileSync(path.join(workflowsDir, 'update_memory.md'), updateMemoryWorkflow);
-
-  // 3. Create init workflow  
-  const initWorkflow = `# Initialize Arbok Workflow
-
-## Trigger
-Run this workflow when starting work on this project for the first time or after major structural changes.
-
-## Steps
-1. Call \`arbok_update_index\` tool to scan and index the entire project
-2. Call \`arbok_update_memory_bank\` to generate Memory Bank documentation
-3. Read \`memory-bank/productContext.md\` to understand the project
-4. Read \`memory-bank/activeContext.md\` for current work context
-`;
-  writeFileSync(path.join(workflowsDir, 'init_arbok.md'), initWorkflow);
 
   return JSON.stringify({
     success: true,
-    message: isUpdate
-      ? '.clinerules files updated successfully'
-      : '.clinerules files created successfully',
-    files_created: [
-      path.join(clineruleDir, 'rules.md'),
-      path.join(workflowsDir, 'update_memory.md'),
-      path.join(workflowsDir, 'init_arbok.md'),
-    ],
+    message: `Project indexed successfully at ${arbokDir}`,
+    stats: {
+      files_indexed: stats.files,
+      nodes_created: stats.nodes,
+      edges_created: stats.edges,
+    },
   }, null, 2);
-}
-
-/**
- * Initialize/re-index the project
- */
-export async function arbokInit(args: z.infer<typeof ArbokInitSchema>): Promise<string> {
-  return arbokInitAll(args);
 }
 
 /**
@@ -516,70 +579,150 @@ export function arbokGetDependencies(args: z.infer<typeof ArbokGetDependenciesSc
   }, null, 2);
 }
 
+/** Required files for a complete Memory Bank. */
+const MEMORY_BANK_REQUIRED_FILES: string[] = [
+  'productContext.md',
+  'activeContext.md',
+  'progress.md',
+  'systemPatterns.md',
+  'techContext.md',
+  'project-structure.md',
+];
+
+/**
+ * Detect the current state of the Memory Bank directory.
+ * Returns 'missing' | 'partial' | 'complete'.
+ */
+function detectMemoryBankState(memoryBankPath: string): { state: 'missing' | 'partial' | 'complete'; missingFiles: string[] } {
+  if (!existsSync(memoryBankPath)) {
+    return { state: 'missing', missingFiles: [...MEMORY_BANK_REQUIRED_FILES] };
+  }
+
+  const missingFiles = MEMORY_BANK_REQUIRED_FILES.filter(
+    (file) => !existsSync(path.join(memoryBankPath, file))
+  );
+
+  if (missingFiles.length > 0) {
+    return { state: 'partial', missingFiles };
+  }
+
+  return { state: 'complete', missingFiles: [] };
+}
+
+/**
+ * Resolve the memory bank path to an absolute path.
+ * Requires `projectPath` to be provided.
+ */
+function resolveMemoryBankPath(memoryBankPath: string | undefined, projectPath: string): string {
+  if (memoryBankPath && path.isAbsolute(memoryBankPath)) {
+    return memoryBankPath;
+  }
+  const targetPath = memoryBankPath || 'memory-bank';
+  return path.resolve(projectPath, targetPath);
+}
+
 /**
  * Update Memory Bank files.
  * If the memory-bank directory and basic files do not exist, they are created and initialized (Setup phase).
  * If they already exist, they are updated with the current project state (Update phase).
  */
 export function arbokUpdateMemory(args: z.infer<typeof ArbokUpdateMemorySchema>): string {
-  const memoryBankPath = args.memoryBankPath || config.memoryBankPath;
+  if (!existsSync(args.projectPath)) {
+    return JSON.stringify({
+      success: false,
+      isError: true,
+      message: `The provided projectPath does not exist: '${args.projectPath}'. Cannot update memory bank in a non-existent project.`,
+    }, null, 2);
+  }
+
+  const memoryBankPath = resolveMemoryBankPath(args.memoryBankPath, args.projectPath);
   const isUpdate = existsSync(memoryBankPath);
   
+  console.error(`[Arbok] arbokUpdateMemory called with execute=${args.execute}`);
+  console.error(`[Arbok] Target Absolute Path: ${memoryBankPath}`);
+
+  if (!args.execute) {
+    console.error(`[Arbok] Dry run mode – skipping file writes`);
+    return JSON.stringify({
+      success: true,
+      message: `Dry run: would ${isUpdate ? 'update' : 'initialize'} Memory Bank at ${memoryBankPath}. Set execute=true to proceed.`,
+      memoryBankPath,
+    }, null, 2);
+  }
+
   // Ensure memory bank directory exists
+  console.error(`[Arbok] Creating directory at: ${memoryBankPath}`);
   mkdirSync(memoryBankPath, { recursive: true });
 
-  const allNodes = getAllNodes();
-  const stats = getCounts();
-  const projectPath = config.projectPath;
+  if (!existsSync(memoryBankPath)) {
+    throw new Error(`[CRITICAL FAILURE] Failed to create directory at: ${memoryBankPath}`);
+  }
+  console.error(`[Arbok] Directory verified at: ${memoryBankPath}`);
+
+  // Memory Bank is a lightweight documentation tool and must NOT query the
+  // index database.  Symbol scanning / indexing is the responsibility of
+  // arbok:init and arbok:update_index only.
+  const projectPath = args.projectPath;
 
   const filesCreated: string[] = [];
 
+  // Helper: write a file and immediately verify it exists
+  const writeAndVerify = (absoluteFilePath: string, content: string): void => {
+    console.error(`[Arbok] Writing file: ${absoluteFilePath}`);
+    writeFileSync(absoluteFilePath, content);
+
+    // IMMEDIATE VERIFICATION
+    if (!existsSync(absoluteFilePath)) {
+      throw new Error(`[CRITICAL FAILURE] File system reported success, but file does not exist at: ${absoluteFilePath}`);
+    }
+    console.error(`[Arbok] Verified file exists: ${absoluteFilePath}`);
+    filesCreated.push(absoluteFilePath);
+  };
+
   // 1. Generate productContext.md
-  const productContext = generateProductContext(allNodes, projectPath);
+  const productContext = generateProductContext([], projectPath);
   const productContextPath = path.join(memoryBankPath, 'productContext.md');
-  writeFileSync(productContextPath, productContext);
-  filesCreated.push(productContextPath);
+  writeAndVerify(productContextPath, productContext);
 
   // 2. Generate activeContext.md
-  const activeContext = generateActiveContext(allNodes);
+  const activeContext = generateActiveContext([]);
   const activeContextPath = path.join(memoryBankPath, 'activeContext.md');
-  writeFileSync(activeContextPath, activeContext);
-  filesCreated.push(activeContextPath);
+  writeAndVerify(activeContextPath, activeContext);
 
   // 3. Generate progress.md
-  const progress = generateProgress(allNodes, stats);
+  const progress = generateProgress([], { files: 0, nodes: 0, edges: 0 });
   const progressPath = path.join(memoryBankPath, 'progress.md');
-  writeFileSync(progressPath, progress);
-  filesCreated.push(progressPath);
+  writeAndVerify(progressPath, progress);
 
   // 4. Generate systemPatterns.md
-  const systemPatterns = generateSystemPatterns(allNodes);
+  const systemPatterns = generateSystemPatterns([]);
   const systemPatternsPath = path.join(memoryBankPath, 'systemPatterns.md');
-  writeFileSync(systemPatternsPath, systemPatterns);
-  filesCreated.push(systemPatternsPath);
+  writeAndVerify(systemPatternsPath, systemPatterns);
 
   // 5. Generate techContext.md
-  const techContext = generateTechContext(projectPath, allNodes);
+  const techContext = generateTechContext(projectPath, []);
   const techContextPath = path.join(memoryBankPath, 'techContext.md');
-  writeFileSync(techContextPath, techContext);
-  filesCreated.push(techContextPath);
+  writeAndVerify(techContextPath, techContext);
 
-  // 6. Generate project-structure.md
-  const projectStructure = generateProjectStructure(allNodes);
+  // 6. Generate project-structure.md (uses basic file tree scan, not symbol indexing)
+  const projectStructure = generateProjectStructureFromFileTree(projectPath);
   const projectStructurePath = path.join(memoryBankPath, 'project-structure.md');
-  writeFileSync(projectStructurePath, projectStructure);
-  filesCreated.push(projectStructurePath);
+  writeAndVerify(projectStructurePath, projectStructure);
+
+  console.error(`[Arbok] All ${filesCreated.length} files written and verified successfully`);
 
   return JSON.stringify({
     success: true,
     message: isUpdate
-      ? 'Memory Bank updated successfully'
-      : 'Memory Bank initialized successfully',
+      ? `Memory Bank updated successfully at ${memoryBankPath}`
+      : `Memory Bank initialized successfully at ${memoryBankPath}`,
+    memoryBankPath,
     files: filesCreated,
+    verified: true,
     stats: {
-      files: stats.files,
-      nodes: stats.nodes,
-      edges: stats.edges,
+      files: filesCreated.length,
+      nodes: 0,
+      edges: 0,
     },
   }, null, 2);
 }
@@ -917,6 +1060,58 @@ function generateProjectStructure(nodes: ArbokNode[]): string {
 
   md += `\n---\n*Generated by Arbok at ${new Date().toISOString()}*\n`;
   
+  return truncateToLines(md, 250);
+}
+
+/**
+ * Generate project structure markdown using a basic file/directory tree scan.
+ * This does NOT perform any symbol analysis or AST parsing.
+ */
+function generateProjectStructureFromFileTree(projectPath: string): string {
+  const IGNORED_ENTRIES = new Set(['node_modules', '.git', 'dist', '.arbok', 'memory-bank']);
+
+  function buildTree(dirPath: string, prefix: string, depth: number): string {
+    if (depth > 4) return '';
+    let result = '';
+    let entries: string[];
+    try {
+      entries = readdirSync(dirPath).sort();
+    } catch {
+      return '';
+    }
+
+    const dirs: string[] = [];
+    const files: string[] = [];
+    for (const entry of entries) {
+      if (IGNORED_ENTRIES.has(entry)) continue;
+      const fullPath = path.join(dirPath, entry);
+      try {
+        if (statSync(fullPath).isDirectory()) {
+          dirs.push(entry);
+        } else {
+          files.push(entry);
+        }
+      } catch {
+        // skip inaccessible entries
+      }
+    }
+
+    for (const dir of dirs) {
+      result += `${prefix}${dir}/\n`;
+      result += buildTree(path.join(dirPath, dir), prefix + '  ', depth + 1);
+    }
+    for (const file of files) {
+      result += `${prefix}${file}\n`;
+    }
+    return result;
+  }
+
+  let md = '# Project Structure\n\n';
+  md += '```\n';
+  md += buildTree(projectPath, '', 0);
+  md += '```\n';
+  md += `\n---\n*Generated by Arbok at ${new Date().toISOString()}*\n`;
+
   return truncateToLines(md, 250);
 }
 

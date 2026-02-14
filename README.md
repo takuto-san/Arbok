@@ -23,12 +23,42 @@ Cline is powerful but expensive — it reads entire source files to understand y
 ## Quick Start with Cline
 
 1. Add Arbok as an MCP server in Cline settings
-2. In Cline chat, say: "init arbok"  
-3. Arbok will:
+2. In Cline chat, use: `arbok:init` with your project path
+3. Arbok will (Plan Mode first, then Act Mode):
    - Scan your project and create an AST index (.arbok/index.db)
    - Generate Memory Bank files (memory-bank/)
    - Create .clinerules for optimal Cline integration
 4. Start coding with dramatically reduced token consumption!
+
+## Automated Workflow & Best Practices
+
+### Zero-Touch Documentation
+
+You **do not need to manually run** `arbok:update_memory_bank` or `arbok:update_index` during normal development. Arbok is designed to work with **Cline Rules (`.clinerules`)**, which automate the entire update cycle for you.
+
+### How It Works
+
+When `.clinerules` are in place, the update flow is fully automatic:
+
+1. **You** give a coding task to Cline.
+2. **Cline** modifies the code to complete the task.
+3. **Cline** (triggered by `.clinerules`) **automatically runs** `arbok:update_index` and `arbok:update_memory_bank` to sync the index and documentation with the latest code state.
+
+```mermaid
+flowchart LR
+    A["1. User gives task"] --> B["2. Cline modifies code"]
+    B --> C["3. .clinerules triggers auto-update"]
+    C --> D["4. Index & Memory Bank synced"]
+    D --> A
+```
+
+### When to Run Manually
+
+You only need to run `arbok:update_index` or `arbok:update_memory_bank` manually if you have made changes to the codebase **outside of Cline** (e.g., manual edits in VS Code, `git pull`, branch switching, etc.).
+
+## Requirements
+
+- Node.js >= 22.0.0
 
 ## Installation
 
@@ -60,40 +90,48 @@ docker-compose up
 
 ## MCP Tools
 
-### 1. `arbok_update_index`
+### Init Tool（統合初期化ツール）
 
-Initialize or re-index the project.
+#### `arbok:init`
 
-```json
-{
-  "projectPath": "/workspace"  // optional
-}
-```
+Unified project initialization. Sets up the project index (`.arbok/`), Memory Bank (`memory-bank/`), and Cline rules (`.clinerules/`) in one go. Smart and idempotent: only creates what is missing, skips what already exists.
 
-### 2. `arbok_get_file_structure`
-
-Get the structure of a specific file (symbols without source code).
+**Plan Mode** (default): Performs a discovery scan and reports what will be created.  
+**Act Mode** (`execute: true`): Creates missing resources.
 
 ```json
 {
-  "filePath": "src/index.ts"
+  "projectPath": "/workspace",  // required - absolute path to the project
+  "execute": true               // optional - set to true in Act Mode
 }
 ```
 
-### 3. `arbok_get_symbols`
+### Get Tools（情報取得用）
 
-List symbols matching a name across the entire project.
+#### `arbok:get_file_structure`
+
+Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code.
 
 ```json
 {
-  "query": "hello",
-  "kind": "function"  // optional: function, class, interface, etc.
+  "filePath": "src/index.ts"  // required - relative path from project root
 }
 ```
 
-### 4. `arbok_get_dependencies`
+#### `arbok:get_symbols`
 
-Get dependency relationships for a file or symbol.
+List symbols matching a name across the entire project. Supports partial matching.
+
+```json
+{
+  "query": "hello",           // required
+  "kind": "function"          // optional: function, class, variable, interface, method, type_alias, enum
+}
+```
+
+#### `arbok:get_dependencies`
+
+Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships.
 
 ```json
 {
@@ -102,13 +140,34 @@ Get dependency relationships for a file or symbol.
 }
 ```
 
-### 5. `arbok_update_memory_bank`
+### Update Tools（更新用）
 
-Update Memory Bank files with project structure and documentation. Creates the memory-bank directory if missing, or updates existing files.
+#### `arbok:update_index`
+
+Re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges. If the index already exists, it is refreshed.
+
+**Plan Mode** (default): Dry run / preview.  
+**Act Mode** (`execute: true`): Performs actual re-indexing.
 
 ```json
 {
-  "memoryBankPath": "memory-bank"  // optional
+  "projectPath": "/workspace",  // required - absolute path to the project
+  "execute": true               // optional - set to true in Act Mode
+}
+```
+
+#### `arbok:update_memory_bank`
+
+Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.
+
+**Plan Mode** (default): Dry run / preview.  
+**Act Mode** (`execute: true`): Performs actual update.
+
+```json
+{
+  "projectPath": "/workspace",      // required - absolute path to the project
+  "memoryBankPath": "memory-bank",  // optional - defaults to memory-bank/
+  "execute": true                   // optional - set to true in Act Mode
 }
 ```
 
@@ -120,20 +179,23 @@ Generates 6 Cline-compliant Memory Bank files:
 - `techContext.md` — Technologies, dependencies, and setup
 - `project-structure.md` — File tree and symbol index
 
-### 6. `arbok_update_rules`
+#### `arbok:update_rules`
 
-Update .clinerules configuration files for Cline integration. Creates config files if missing, or updates existing ones.
+Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.
+
+**Plan Mode** (default): Dry run / preview.  
+**Act Mode** (`execute: true`): Performs actual update.
 
 ```json
 {
-  "projectPath": "/workspace"  // optional
+  "projectPath": "/workspace",  // required - absolute path to the project
+  "execute": true               // optional - set to true in Act Mode
 }
 ```
 
 Creates:
 - `.clinerules/rules.md` — Base rules for efficient file access
 - `.clinerules/workflows/update_memory.md` — Memory Bank update workflow
-- `.clinerules/workflows/init_arbok.md` — Initialization workflow
 
 ## Configuration
 
@@ -154,14 +216,19 @@ The server uses SQLite to store indexed symbols and relationships. The database 
 - **`src/types/`**: TypeScript type definitions
 - **`src/database/`**: SQLite connection and queries
 - **`src/core/`**: AST parsing and node/edge extraction
-- **`src/observer/`**: File system watcher
+- **`src/watcher/`**: File system watcher
 - **`src/mcp/`**: MCP server and tool implementations
 
 ## Supported Languages
 
+**Fully Supported (with AST parsing):**
 - TypeScript (`.ts`, `.tsx`)
 - JavaScript (`.js`, `.jsx`)
 - Python (`.py`)
+
+**Scan Only (parser not yet implemented):**
+- Go (`.go`)
+- Rust (`.rs`)
 
 ## License
 

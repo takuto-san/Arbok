@@ -83,5 +83,5 @@ export function parseFilePath(filePath: string): Parser.Tree | null {
  * Check if a file extension is supported
  */
 export function isSupportedExtension(ext: string): boolean {
-  return ['.ts', '.tsx', '.js', '.jsx', '.py'].includes(ext);
+  return ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'].includes(ext);
 }

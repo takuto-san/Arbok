@@ -6,3 +6,4 @@ workspace/.clinerules/
 node_modules/
 dist/
 resources/*.wasm
+package-lock.json

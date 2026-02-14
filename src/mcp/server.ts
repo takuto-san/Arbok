@@ -7,7 +7,7 @@ import {
 import { initParsers } from '../core/parser.js';
 import {
   arbokInit,
-  arbokInitAll,
+  arbokReindex,
   arbokGetFileStructure,
   arbokSearchSymbol,
   arbokGetDependencies,
@@ -20,6 +20,19 @@ import {
   ArbokUpdateMemorySchema,
   ArbokSetupRulesSchema,
 } from './tools.js';
+
+const PLAN_MODE_META_INSTRUCTION = '\n\n[IMPORTANT INSTRUCTION]: If you executed this tool in Plan Mode, the task is NOT complete. You have only prepared the environment. You MUST now ask the user to switch to Act Mode to proceed with the actual implementation.';
+
+const EXECUTE_PROPERTY = {
+  execute: {
+    type: 'boolean',
+    description: "Set to true ONLY in Act Mode to perform the actual operation. Defaults to false (Dry Run/Preview).",
+  },
+} as const;
+
+function dryRunResponse(_toolName: string): string {
+  return "Preview Mode: To perform this action, please SWITCH TO ACT MODE and run this tool again with 'execute: true'.";
+}
 
 /**
  * Create and configure the MCP server
@@ -46,26 +59,24 @@ export async function createMCPServer(): Promise<Server> {
       tools: [
         // unified init tool
         {
-          name: 'arbok_init',
-          description: 'Unified initialization: indexes the project, creates memory-bank files, and sets up .clinerules. Idempotent — only creates what is missing. Use execute: false for a dry-run plan.',
+          name: 'arbok:init',
+          description: 'Unified project initialization. Sets up the project index (.arbok/), Memory Bank (memory-bank/), and Cline rules (.clinerules/) in one go. Smart and idempotent: only creates what is missing, skips what already exists.',
           inputSchema: {
             type: 'object',
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
-              execute: {
-                type: 'boolean',
-                description: 'If true (default), performs initialization. If false, returns a plan of what will be created.',
-              },
+              ...EXECUTE_PROPERTY,
             },
+            required: ['projectPath'],
           },
         },
         // get tools
         {
-          name: 'arbok_get_file_structure',
-          description: 'Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code. This tool is for context gathering only — it does not modify code. In Plan Mode, use its output to formulate a plan, then switch to Act Mode to make changes.',
+          name: 'arbok:get_file_structure',
+          description: 'Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -78,8 +89,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_get_symbols',
-          description: 'List symbols matching a name across the entire project. Supports partial matching. This tool is for context gathering only — it does not modify code. In Plan Mode, use its output to formulate a plan, then switch to Act Mode to make changes.',
+          name: 'arbok:get_symbols',
+          description: 'List symbols matching a name across the entire project. Supports partial matching.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -97,8 +108,8 @@ export async function createMCPServer(): Promise<Server> {
           },
         },
         {
-          name: 'arbok_get_dependencies',
-          description: 'Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships. This tool is for context gathering only — it does not modify code. In Plan Mode, use its output to formulate a plan, then switch to Act Mode to make changes.',
+          name: 'arbok:get_dependencies',
+          description: 'Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -115,42 +126,52 @@ export async function createMCPServer(): Promise<Server> {
         },
         // update tools
         {
-          name: 'arbok_update_index',
+          name: 'arbok:update_index',
           description: 'Initialize or re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges, and starts file watcher. If the index already exists, it is refreshed.',
           inputSchema: {
             type: 'object',
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
+              ...EXECUTE_PROPERTY,
             },
+            required: ['projectPath'],
           },
         },
         {
-          name: 'arbok_update_memory_bank',
+          name: 'arbok:update_memory_bank',
           description: 'Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.',
           inputSchema: {
             type: 'object',
             properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Absolute path to the project directory. REQUIRED.',
+              },
               memoryBankPath: {
                 type: 'string',
                 description: 'Path to memory bank directory (optional, defaults to memory-bank/)',
               },
+              ...EXECUTE_PROPERTY,
             },
+            required: ['projectPath'],
           },
         },
         {
-          name: 'arbok_update_rules',
+          name: 'arbok:update_rules',
           description: 'Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.',
           inputSchema: {
             type: 'object',
             properties: {
               projectPath: {
                 type: 'string',
-                description: 'Path to the project directory (optional, defaults to /workspace or PROJECT_PATH env var)',
+                description: 'Absolute path to the project directory. REQUIRED.',
               },
+              ...EXECUTE_PROPERTY,
             },
+            required: ['projectPath'],
           },
         },
       ],
@@ -165,53 +186,70 @@ export async function createMCPServer(): Promise<Server> {
       let result: string;
 
       switch (name) {
-        // unified init tool
-        case 'arbok_init': {
+        // unified init
+        case 'arbok:init': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
-          result = await arbokInitAll(validatedArgs);
+          result = await arbokInit(validatedArgs);
           break;
         }
 
         // get tools
-        case 'arbok_get_file_structure': {
+        case 'arbok:get_file_structure': {
           const validatedArgs = ArbokGetFileStructureSchema.parse(args || {});
           result = arbokGetFileStructure(validatedArgs);
           break;
         }
 
-        case 'arbok_get_symbols': {
+        case 'arbok:get_symbols': {
           const validatedArgs = ArbokSearchSymbolSchema.parse(args || {});
           result = arbokSearchSymbol(validatedArgs);
           break;
         }
 
-        case 'arbok_get_dependencies': {
+        case 'arbok:get_dependencies': {
           const validatedArgs = ArbokGetDependenciesSchema.parse(args || {});
           result = arbokGetDependencies(validatedArgs);
           break;
         }
 
         // update tools
-        case 'arbok_update_index': {
+        case 'arbok:update_index': {
           const validatedArgs = ArbokInitSchema.parse(args || {});
-          result = await arbokInit(validatedArgs);
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
+          result = await arbokReindex(validatedArgs);
           break;
         }
 
-        case 'arbok_update_memory_bank': {
+        case 'arbok:update_memory_bank': {
           const validatedArgs = ArbokUpdateMemorySchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = arbokUpdateMemory(validatedArgs);
           break;
         }
 
-        case 'arbok_update_rules': {
+        case 'arbok:update_rules': {
           const validatedArgs = ArbokSetupRulesSchema.parse(args || {});
+          if (!validatedArgs.execute) {
+            result = dryRunResponse(name);
+            break;
+          }
           result = arbokSetupRules(validatedArgs);
           break;
         }
 
         default:
           throw new Error(`Unknown tool: ${name}`);
+      }
+
+      const executedInActMode = args && typeof args === 'object' && 'execute' in args && args.execute === true;
+      if ((name.startsWith('arbok:init') || name.startsWith('arbok:update')) && !executedInActMode) {
+        result += PLAN_MODE_META_INSTRUCTION;
       }
 
       return {

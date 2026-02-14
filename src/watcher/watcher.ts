@@ -14,6 +14,7 @@ import {
 import { arbokUpdateMemory } from '../mcp/tools.js';
 
 let watcher: FSWatcher | null = null;
+let watcherProjectPath: string | null = null;
 let pendingChanges = 0;
 let memoryBankUpdateTimer: NodeJS.Timeout | null = null;
 const MEMORY_BANK_UPDATE_THRESHOLD = 5;
@@ -22,11 +23,18 @@ const MEMORY_BANK_UPDATE_DEBOUNCE_MS = 30000; // 30 seconds
 /**
  * Start watching the project directory for changes
  */
-export function startWatcher(projectPath: string = config.projectPath): void {
+export function startWatcher(projectPath: string): void {
   if (watcher) {
     console.error('Watcher already running');
     return;
   }
+
+  if (!projectPath) {
+    console.error('[Arbok Watcher] Cannot start: no projectPath provided');
+    return;
+  }
+
+  watcherProjectPath = projectPath;
 
   console.error(`Starting file watcher for: ${projectPath}`);
 
@@ -178,10 +186,15 @@ function scheduleMemoryBankUpdate(): void {
 async function executeMemoryBankUpdate(): Promise<void> {
   if (pendingChanges === 0) return;
 
+  if (!watcherProjectPath) {
+    console.error('Cannot update Memory Bank: watcherProjectPath is not set. Ensure startWatcher was called with a valid projectPath.');
+    return;
+  }
+
   console.error(`Triggering Memory Bank update (${pendingChanges} changes accumulated)`);
   
   try {
-    arbokUpdateMemory({ memoryBankPath: config.memoryBankPath });
+    arbokUpdateMemory({ projectPath: watcherProjectPath, memoryBankPath: config.memoryBankPath, execute: true });
     console.error('Memory Bank updated successfully');
   } catch (error) {
     console.error('Error updating Memory Bank:', error);
