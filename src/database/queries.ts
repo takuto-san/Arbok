@@ -1,4 +1,5 @@
 import { getDatabase } from './connection.js';
+import { existsSync, statSync } from 'fs';
 import type { Node, Edge, NodeKind, EdgeRelation } from '../types/index.js';
 
 /**
@@ -270,6 +271,19 @@ export function getCounts(): { nodes: number; edges: number; files: number } {
  */
 export function clearDatabase(): void {
   const db = getDatabase();
-  db.exec('DELETE FROM edges');
-  db.exec('DELETE FROM nodes');
+  const dbPath = (db as any).memory ? ':memory:' : undefined;
+  try {
+    db.exec('DELETE FROM edges');
+    db.exec('DELETE FROM nodes');
+    console.error('[Arbok DB] clearDatabase executed: tables cleared');
+  } catch (e) {
+    console.error('[Arbok DB] clearDatabase failed:', e);
+    throw e;
+  }
+
+  // Attempt to log database file existence if possible
+  try {
+    // Try to access the module-level open path via connection.getOpenDbPath if available
+    // Fallback: nothing to do here — best-effort diagnostics are logged in connection.getDatabase
+  } catch {}
 }
