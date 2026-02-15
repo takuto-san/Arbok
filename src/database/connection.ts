@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { mkdirSync, existsSync } from 'fs';
+import * as fs from 'fs';
 import path from 'path';
 import { config, isProjectConfigured } from '../config.js';
 import { createTablesSQL } from './schema.js';
@@ -30,33 +30,78 @@ export function getDatabase(): Database.Database {
 
   // Ensure .arbok directory exists
   const dbDir = path.dirname(config.dbPath);
-  mkdirSync(dbDir, { recursive: true });
-
-  console.error(`[Arbok DB] Opening database at: ${config.dbPath}`);
-
-  // Create database connection
-  db = new Database(config.dbPath, {
-    verbose: process.env.DEBUG_SQL ? console.log : undefined,
-  });
-
-  // Remember WHERE we actually opened the connection
-  currentDbPath = config.dbPath;
-
-  // Verify the file was actually created
-  if (!existsSync(config.dbPath)) {
-    throw new Error(`[Arbok DB] CRITICAL: Database file was not created at: ${config.dbPath}`);
+  fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    console.error(`[Arbok DB] Ensured directory exists: ${dbDir} (exists=${fs.existsSync(dbDir)})`);
+  } catch (e) {
+    console.error(`[Arbok DB] Failed to stat dbDir: ${dbDir} -> ${e}`);
   }
 
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
-  
-  // Enable WAL mode for better concurrency
-  db.pragma('journal_mode = WAL');
+  const targetPath = config.dbPath;
+  console.error(`[Arbok DB] Opening database at: ${targetPath}`);
 
-  // Initialize schema
-  db.exec(createTablesSQL);
+  // Ensure the DB file exists on disk before opening. This prevents some
+  // SQLite bindings from opening an in-memory DB when the path is invalid
+  // or the parent directory was missing. Create an empty file if absent.
+  try {
+    if (!fs.existsSync(targetPath)) {
+      const fd = fs.openSync(targetPath, 'w');
+      fs.closeSync(fd);
+      console.error(`[Arbok DB] Created empty DB file at: ${targetPath}`);
+    }
+  } catch (e) {
+    console.error(`[Arbok DB] Failed to ensure DB file exists at: ${targetPath} -> ${e}`);
+  }
 
-  console.error(`[Arbok DB] Database ready at: ${config.dbPath}`);
+  // Create database connection
+  let newDb: Database.Database;
+  try {
+    newDb = new Database(targetPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`[Arbok DB] Failed to open database file at: ${targetPath} – ${msg}`);
+  }
+
+  // Verify the file was actually created on disk
+  if (!fs.existsSync(targetPath)) {
+    try { newDb.close(); } catch { /* ignore */ }
+    console.error(`[Arbok DB] File missing after open: ${targetPath} (dir exists=${fs.existsSync(dbDir)})`);
+    throw new Error(
+      `[Arbok DB] CRITICAL: better-sqlite3 returned a Database object but the file does not exist at: ${targetPath}. `
+      + 'The database may have been opened in-memory. Ensure the path is absolute and the parent directory is writable.'
+    );
+  } else {
+    try {
+      const stats = fs.statSync(targetPath);
+      console.error(`[Arbok DB] Database file exists: ${targetPath} (size=${stats.size})`);
+    } catch (e) {
+      console.error(`[Arbok DB] Could not stat DB file: ${targetPath} -> ${e}`);
+    }
+  }
+
+  // Only commit to module-level state AFTER the file is confirmed on disk
+  db = newDb;
+  currentDbPath = targetPath;
+
+  try {
+    // Enable foreign keys
+    db.pragma('foreign_keys = ON');
+
+    // Enable WAL mode for better concurrency
+    db.pragma('journal_mode = WAL');
+
+    // Initialize schema
+    db.exec(createTablesSQL);
+  } catch (err) {
+    // Schema init failed – close and reset so the next call retries cleanly
+    console.error(`[Arbok DB] Schema initialisation failed, closing connection: ${err}`);
+    try { db.close(); } catch { /* ignore */ }
+    db = null;
+    currentDbPath = null;
+    throw err;
+  }
+
+  console.error(`[Arbok DB] Database ready at: ${targetPath} (file verified on disk)`);
 
   return db;
 }
@@ -95,6 +140,14 @@ export function ensureDatabaseAt(targetDbPath: string): void {
   // Stale connection – close it so getDatabase() re-opens at the new path
   console.error(`[Arbok DB] Path mismatch: current=${currentDbPath}, target=${targetDbPath}. Closing stale connection.`);
   closeDatabase();
+}
+
+/**
+ * Return the absolute path where the currently open DB resides,
+ * or null if no connection is open.
+ */
+export function getOpenDbPath(): string | null {
+  return currentDbPath;
 }
 
 /**
