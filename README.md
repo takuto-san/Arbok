@@ -1,60 +1,48 @@
 # Arbok MCP Server
 
-AST-based code analysis MCP server that reduces token consumption by providing lightweight code structure queries instead of reading entire files.
+AST-based code analysis MCP server that reduces token consumption by providing lightweight code-structure queries instead of reading entire files.
 
 ## Why Arbok?
 
-Cline is powerful but expensive — it reads entire source files to understand your codebase, consuming thousands of tokens per exploration. Arbok solves this by:
+Cline (or other LLM-backed agents) often read whole files which is expensive. Arbok reduces that cost by:
 
-1. **AST Index**: Instead of reading 500-line files, Cline gets a 20-line summary of functions/classes/signatures
-2. **Memory Bank**: Project context is pre-generated so Cline doesn't need to re-explore on every task  
-3. **Auto-setup**: .clinerules are generated automatically to teach Cline to use Arbok
-4. **Real-time sync**: File watcher keeps everything up-to-date as you code
+1. **AST Index**: Indexes symbols (functions, classes, interfaces) so tools can request concise summaries instead of full files.
+2. **Memory Bank**: Lightweight, generated documentation that captures project purpose, active context, and structure.
+3. **Auto-setup**: Generates and updates `.clinerules` and helper files to integrate with Cline workflows.
+4. **Real-time sync**: A file watcher keeps the index and Memory Bank in sync with code changes.
 
 ## Features
 
-- **AST Parsing**: Uses tree-sitter to parse TypeScript, JavaScript, and Python files
-- **Symbol Indexing**: Extracts and indexes functions, classes, interfaces, methods, and more
-- **Dependency Tracking**: Resolves imports, extends, and implements relationships
-- **Real-time Updates**: File system watcher keeps the index up-to-date
-- **Memory Bank**: Generates Cline-compliant documentation files summarizing project structure
-- **Cline Integration**: Auto-generates .clinerules for optimal workflow
+- **AST Parsing**: Uses Tree-sitter (via `web-tree-sitter`) to parse TypeScript/JavaScript and Python.
+- **Symbol Indexing**: Extracts and indexes functions, classes, interfaces, methods, and other top-level symbols into an SQLite database (`.arbok/index.db`).
+- **Dependency Tracking**: Resolves imports and class/interface relationships (extends/implements) as edges in the index.
+- **Real-time Updates**: Starts a file watcher after indexing to keep the project index current.
+- **Memory Bank**: Generates a small set of Markdown documents under `memory-bank/` that summarize project purpose, active context, and structure.
+- **MCP/CLI Integration**: Exposes a set of MCP tools (STDIO-based Server) for automated workflows and integration with Cline.
 
-## Quick Start with Cline
+## Quick Start with Cline or other MCP clients
 
-1. Add Arbok as an MCP server in Cline settings
-2. In Cline chat, use: `arbok:init` with your project path
-3. Arbok will (Plan Mode first, then Act Mode):
-   - Scan your project and create an AST index (.arbok/index.db)
-   - Generate Memory Bank files (memory-bank/)
-   - Create .clinerules for optimal Cline integration
-4. Start coding with dramatically reduced token consumption!
+1. Add Arbok as an MCP server in your MCP client (Arbok runs over STDIO by default).
+2. Call the `arbok:init` tool with your `projectPath`.
+3. Workflow: Run in Plan Mode (default) to preview; in Act Mode (`execute: true`) Arbok will:
+  - Create or refresh the index at `.arbok/index.db`.
+  - Generate `memory-bank/` Markdown files.
+  - Create/update `.clinerules/` files to guide agents.
+4. Use `arbok:get_file_structure`, `arbok:get_symbols` and `arbok:get_dependencies` to query the index instead of reading full files.
 
 ## Automated Workflow & Best Practices
 
-### Zero-Touch Documentation
+### Plan Mode vs Act Mode
 
-You **do not need to manually run** `arbok:update_memory_bank` or `arbok:update_index` during normal development. Arbok is designed to work with **Cline Rules (`.clinerules`)**, which automate the entire update cycle for you.
+Most tools support two modes:
+- **Plan Mode** (default): Dry-run / preview. Useful to discover what will be created or changed.
+- **Act Mode** (`execute: true`): Performs the actual writes (index, memory bank, rules).
 
-### How It Works
+Use Plan Mode to confirm before making changes; Act Mode to apply them.
 
-When `.clinerules` are in place, the update flow is fully automatic:
+### When to run manually
 
-1. **You** give a coding task to Cline.
-2. **Cline** modifies the code to complete the task.
-3. **Cline** (triggered by `.clinerules`) **automatically runs** `arbok:update_index` and `arbok:update_memory_bank` to sync the index and documentation with the latest code state.
-
-```mermaid
-flowchart LR
-    A["1. User gives task"] --> B["2. Cline modifies code"]
-    B --> C["3. .clinerules triggers auto-update"]
-    C --> D["4. Index & Memory Bank synced"]
-    D --> A
-```
-
-### When to Run Manually
-
-You only need to run `arbok:update_index` or `arbok:update_memory_bank` manually if you have made changes to the codebase **outside of Cline** (e.g., manual edits in VS Code, `git pull`, branch switching, etc.).
+You only need to run `arbok:update_index` or `arbok:update_memory_bank` manually if the codebase was changed outside your MCP-driven workflow (e.g., manual edits, `git checkout`, large merges).
 
 ## Requirements
 
@@ -64,22 +52,66 @@ You only need to run `arbok:update_index` or `arbok:update_memory_bank` manually
 
 ```bash
 npm install
-npm run build
-npm run build:wasm  # Build tree-sitter WASM grammars
+npm run build        # TypeScript build (outputs to dist/)
+npm run build:wasm   # Build Tree-sitter WASM grammars (requires tree-sitter CLI and grammars)
 ```
+
+### Build WASM grammars (detailed)
+
+Arbok requires Tree-sitter WASM grammars for the TypeScript and Python parsers. The project includes npm scripts that invoke the `tree-sitter` CLI:
+
+- `npm run build:wasm` — runs both `build:wasm:ts` and `build:wasm:py` (see `package.json`).
+
+Prerequisites:
+
+- Ensure the `tree-sitter` CLI is available. Either install it globally:
+
+```bash
+npm install -g tree-sitter-cli
+```
+
+or use `npx` to run the locally installed CLI without global install.
+
+Typical build steps:
+
+```bash
+# Install dependencies
+npm install
+
+# Build TypeScript source
+npm run build
+
+# Build both WASM grammars (preferred)
+npm run build:wasm
+
+# Alternative: run the individual build commands (using npx if you did not install tree-sitter globally)
+npx tree-sitter build --wasm node_modules/tree-sitter-typescript/typescript -o resources/tree-sitter-typescript.wasm
+npx tree-sitter build --wasm node_modules/tree-sitter-python -o resources/tree-sitter-python.wasm
+```
+
+Output:
+
+- `resources/tree-sitter-typescript.wasm`
+- `resources/tree-sitter-python.wasm`
+
+Notes:
+
+- If the `tree-sitter` command is not found after installing globally, ensure your npm global bin directory is on `PATH` or use `npx` as shown above.
+- Building the grammars requires a working Node.js toolchain; on macOS you may need to install Xcode Command Line Tools (`xcode-select --install`) if compilation errors occur.
 
 ## Usage
 
 ### Development
 
 ```bash
-npm run dev
+npm run dev    # Runs src/index.ts via tsx in watch mode
 ```
 
 ### Production
 
 ```bash
-npm start
+npm run build
+npm start      # Runs dist/index.js
 ```
 
 ### Docker
@@ -88,147 +120,49 @@ npm start
 docker-compose up
 ```
 
-## MCP Tools
+## MCP Tools (exposed by the STDIO MCP server)
 
-### Init Tool（統合初期化ツール）
+Arbok exposes a set of tools for discovery and updates. All tools support Plan Mode (dry run) and Act Mode (`execute: true`) where applicable.
 
-#### `arbok:init`
+- `arbok:init` — Unified initialization: prepares `.arbok/` (index), `memory-bank/`, and `.clinerules/`.
+- `arbok:get_file_structure` — List symbols in a single file (no source code included).
+- `arbok:get_symbols` — Search symbols across the indexed project (supports partial matching and kind filters).
+- `arbok:get_dependencies` — Query dependency relations (imports, extends, implements) for a file or symbol.
+- `arbok:update_index` — (Re)index the project and start the file watcher.
+- `arbok:update_memory_bank` — Generate/update the set of Memory Bank Markdown files.
+- `arbok:update_rules` — Create/update `.clinerules/` and workflows for integration.
 
-Unified project initialization. Sets up the project index (`.arbok/`), Memory Bank (`memory-bank/`), and Cline rules (`.clinerules/`) in one go. Smart and idempotent: only creates what is missing, skips what already exists.
-
-**Plan Mode** (default): Performs a discovery scan and reports what will be created.  
-**Act Mode** (`execute: true`): Creates missing resources.
-
-```json
-{
-  "projectPath": "/workspace",  // required - absolute path to the project
-  "execute": true               // optional - set to true in Act Mode
-}
-```
-
-### Get Tools（情報取得用）
-
-#### `arbok:get_file_structure`
-
-Get the structure of a specific file. Returns symbols (functions, classes, etc.) with their metadata but WITHOUT source code.
-
-```json
-{
-  "filePath": "src/index.ts"  // required - relative path from project root
-}
-```
-
-#### `arbok:get_symbols`
-
-List symbols matching a name across the entire project. Supports partial matching.
-
-```json
-{
-  "query": "hello",           // required
-  "kind": "function"          // optional: function, class, variable, interface, method, type_alias, enum
-}
-```
-
-#### `arbok:get_dependencies`
-
-Get dependency relationships for a file or symbol. Returns imports, calls, extends, and implements relationships.
-
-```json
-{
-  "filePath": "src/index.ts",  // optional
-  "symbolName": "hello"        // optional
-}
-```
-
-### Update Tools（更新用）
-
-#### `arbok:update_index`
-
-Re-index the project. Scans all source files, parses them with Tree-sitter, extracts nodes and edges. If the index already exists, it is refreshed.
-
-**Plan Mode** (default): Dry run / preview.  
-**Act Mode** (`execute: true`): Performs actual re-indexing.
-
-```json
-{
-  "projectPath": "/workspace",  // required - absolute path to the project
-  "execute": true               // optional - set to true in Act Mode
-}
-```
-
-#### `arbok:update_memory_bank`
-
-Update Memory Bank files with current project structure, components, and dependencies. If the memory-bank directory and basic files do not exist, they are created and initialized. If they already exist, they are updated with the current project state.
-
-**Plan Mode** (default): Dry run / preview.  
-**Act Mode** (`execute: true`): Performs actual update.
-
-```json
-{
-  "projectPath": "/workspace",      // required - absolute path to the project
-  "memoryBankPath": "memory-bank",  // optional - defaults to memory-bank/
-  "execute": true                   // optional - set to true in Act Mode
-}
-```
-
-Generates 6 Cline-compliant Memory Bank files:
-- `productContext.md` — Project purpose and user experience goals
-- `activeContext.md` — Current work focus and recent changes
-- `progress.md` — What works, what's left, known issues
-- `systemPatterns.md` — Architecture and design patterns
-- `techContext.md` — Technologies, dependencies, and setup
-- `project-structure.md` — File tree and symbol index
-
-#### `arbok:update_rules`
-
-Update .clinerules configuration files for Cline integration. If .clinerules or related config files do not exist, they are generated from scratch. If they already exist, they are updated with necessary changes.
-
-**Plan Mode** (default): Dry run / preview.  
-**Act Mode** (`execute: true`): Performs actual update.
-
-```json
-{
-  "projectPath": "/workspace",  // required - absolute path to the project
-  "execute": true               // optional - set to true in Act Mode
-}
-```
-
-Creates:
-- `.clinerules/rules.md` — Base rules for efficient file access
-- `.clinerules/workflows/update_memory.md` — Memory Bank update workflow
+Memory Bank generated files (6): `productContext.md`, `activeContext.md`, `progress.md`, `systemPatterns.md`, `techContext.md`, `project-structure.md`.
 
 ## Configuration
 
-Set environment variables in `.env`:
+You can set `PROJECT_PATH` as an environment variable for local development. Many tools accept a `projectPath` argument so they can be run against an arbitrary project.
+
+Example `.env`:
 
 ```env
-PROJECT_PATH=/workspace  # Path to your project
-DEBUG_SQL=false          # Enable SQL query logging
+PROJECT_PATH=/path/to/project
+DEBUG_SQL=false
 ```
 
 ## Database
 
-The server uses SQLite to store indexed symbols and relationships. The database is stored in `.arbok/index.db` within your project directory.
+Indexed symbols and relationships are stored in SQLite at `.arbok/index.db` inside the target project directory.
 
 ## Architecture
 
-- **`src/config.ts`**: Configuration management
-- **`src/types/`**: TypeScript type definitions
-- **`src/database/`**: SQLite connection and queries
-- **`src/core/`**: AST parsing and node/edge extraction
-- **`src/watcher/`**: File system watcher
-- **`src/mcp/`**: MCP server and tool implementations
+- `src/config.ts`: Configuration management
+- `src/types/`: TypeScript type definitions
+- `src/database/`: SQLite connection and queries
+- `src/core/`: AST parsing and node/edge extraction (Tree-sitter parsers)
+- `src/watcher/`: File system watcher
+- `src/mcp/`: MCP server and tool implementations (STDIO transport)
 
 ## Supported Languages
 
-**Fully Supported (with AST parsing):**
-- TypeScript (`.ts`, `.tsx`)
-- JavaScript (`.js`, `.jsx`)
-- Python (`.py`)
+Fully supported (with AST parsing): TypeScript (`.ts`, `.tsx`), JavaScript (`.js`, `.jsx`), Python (`.py`).
 
-**Scan Only (parser not yet implemented):**
-- Go (`.go`)
-- Rust (`.rs`)
+Scanned (file-tree only) / planned: Go (`.go`), Rust (`.rs`).
 
 ## License
 
