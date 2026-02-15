@@ -87,7 +87,7 @@ export const ArbokSetupRulesSchema = z.object({
 });
 
 /** Number of files created by arbokSetupRules (.clinerules). */
-const CLINERULES_FILE_COUNT = 3;
+const CLINERULES_FILE_COUNT = 4;
 
 /**
  * Update .clinerules configuration files.
@@ -124,9 +124,10 @@ The Arbok MCP is your primary interface for maintaining this synchronization.
 A task is **NOT COMPLETE** until:
 1. The code changes are implemented and verified.
 2. **You have executed \`arbok:update_memory_bank\` to sync the documentation.**
-3. You have confirmed the update was successful.
+3. **You have ensured the code intelligence index is up-to-date.**
+4. You have confirmed both updates were successful.
 
-**Do NOT report "Task Completed" without performing Step 2.**
+**Do NOT report "Task Completed" without performing Steps 2 and 3.**
 
 ## Mandatory Workflows
 
@@ -139,6 +140,10 @@ A task is **NOT COMPLETE** until:
 - **Trigger:** Immediately after you finish writing or modifying code.
 - **Action:** Run the \`arbok:update_memory_bank\` tool.
 - **Reasoning:** The Memory Bank is the source of truth. Code without updated documentation is technical debt.
+
+### 3. Code Intelligence Maintenance
+- **Purpose:** Maintain accurate symbol search and code intelligence.
+- **Procedure:** For code intelligence and symbol search accuracy, follow the procedure in \`@.clinerules/workflows/update_index.md\`.
 
 ## Tool Usage Constraints
 - **File Access:** Only read the full content of a file if you intend to edit it or need deep logic verification. Use the index for everything else.
@@ -165,6 +170,30 @@ Run this workflow after completing any task that modifies the codebase.
 `;
   writeFileSync(path.join(workflowsDir, 'update_memory.md'), updateMemoryWorkflow);
 
+  // 3. Create Index update workflow
+  const updateIndexWorkflow = `# Update Index Workflow
+
+## Purpose
+Maintain the SQLite index for code intelligence and ensure accurate symbol search functionality.
+
+## Trigger Conditions
+Run this workflow when:
+- After creating new files or classes
+- After significant refactoring or dependency changes
+- When \`arbok:get_symbols\` fails to find an expected existing symbol
+
+## Action Steps
+1. Run \`arbok:update_index\` to rebuild the code intelligence database
+2. Verify the output \`stats\` (ensure \`nodes > 0\`)
+3. Cross-reference with \`memory-bank/project-structure.md\` to ensure file list consistency
+
+## Expected Outcome
+- Updated SQLite database at \`.arbok/index.db\`
+- Accurate symbol search results
+- Consistent file indexing across the project
+`;
+  writeFileSync(path.join(workflowsDir, 'update_index.md'), updateIndexWorkflow);
+
   return JSON.stringify({
     success: true,
     message: isUpdate
@@ -173,6 +202,7 @@ Run this workflow after completing any task that modifies the codebase.
     files_created: [
       path.join(clineruleDir, 'rules.md'),
       path.join(workflowsDir, 'update_memory.md'),
+      path.join(workflowsDir, 'update_index.md'),
     ],
   }, null, 2);
 }
